@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Progressive">
+  <meta http-equiv="Cache-Control" content="no-cache">
+  <title>Progressive</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <!-- ?v= değerini her güncellemede artır: tarayıcı eski dosyayı önbellekten getirmesin -->
+  <link rel="stylesheet" href="css/styles.css?v=9">
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <div id="sheet-root"></div>
+  <div id="dialog-root"></div>
+  <div id="toast" role="status"></div>
+
+  <noscript>Bu uygulama JavaScript gerektirir.</noscript>
+
+  <!-- Sıra önemli: seed → storage → logic → app -->
+  <script src="js/seed.js?v=9"></script>
+  <script src="js/storage.js?v=9"></script>
+  <script src="js/logic.js?v=9"></script>
+  <script src="js/app.js?v=9"></script>
+</body>
+</html>
