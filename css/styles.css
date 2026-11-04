@@ -422,13 +422,10 @@ button.prog-row:last-child { border-bottom: 0; }
 .field .range-row input:not([type="radio"]) { width: 76px; text-align: center; margin-top: 0; }
 .tile b small { font-size: 14px; font-weight: 600; color: var(--muted); margin-left: 2px; }
 
-.chart-read { display: flex; flex-direction: column; margin: 4px 0 6px; }
-.chart-read b { font-size: 24px; line-height: 1.2; }
 .chart { display: block; width: 100%; height: auto; overflow: visible; touch-action: manipulation; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .axis { fill: var(--muted); font-size: 11px; }
 .chart .series { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .chart .dot-pt { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
 .chart .dot-pt.pr { fill: var(--accent); stroke: var(--surface); }
 .chart .dot-pt.sel { stroke-width: 3; }
@@ -436,3 +433,11 @@ button.prog-row:last-child { border-bottom: 0; }
 .chart .hit { fill: transparent; cursor: pointer; }
 .lg-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--accent); vertical-align: -1px; }
 .lg-dot.pr { background: var(--accent); border-color: var(--accent); }
+.chart-head { margin: 4px 0 2px; font-size: 15px; }
+.chart-head b { font-size: 24px; }
+.chart-head .prog-pct { margin-left: 4px; }
+.chart-read { margin-top: 6px; min-height: 2.8em; display: block; }
+.chart-help { margin-top: 6px; }
+.easy-set { margin: 2px 0 10px; }
+.pr-list { margin: 6px 0 0; padding-left: 18px; }
+.pr-list li { margin: 2px 0; font-weight: 400; }

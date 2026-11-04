@@ -128,6 +128,13 @@
     return { weight: stepValue(prev.weight, ex.weightStep || 2.5, 1), reps: r.min, kind: 'weight' };
   }
 
+  // Hedef sadece son N sette verilir (tükenişe yakın, ilerlemeyi asıl taşıyan setler).
+  // Önceki setler geçen seferki gibi doldurulur. Plandan fazla eklenen setler de "son" sayılır.
+  function isTargetSet(index, plannedSets, lastN) {
+    const n = lastN > 0 ? lastN : 2;
+    return index >= Math.max(0, (plannedSets || 0) - n);
+  }
+
   // ---------- Kişisel rekor ----------
 
   // Bu antrenmandan önceki (başlangıç zamanına göre) tüm bitmiş antrenmanlardaki en iyi set
@@ -488,6 +495,6 @@
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,
     metricOf, sessionScore, compareAverages, workoutGroups, inGroup,
-    repRange, nextTarget, priorBest, recordFlags, exerciseHistory,
+    repRange, nextTarget, isTargetSet, priorBest, recordFlags, exerciseHistory,
   };
 });

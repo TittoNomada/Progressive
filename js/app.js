@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 10;
+  const APP_VERSION = 11;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -150,11 +150,17 @@
       const e = exercise(ex.exerciseId);
       const d = L.prefill(prev, ex.sets, ex.sets.length, e);
       // Geçen seferin aynı seti biliniyorsa doğrudan bugünkü hedefle doldur (tutturursan tek dokunuş)
-      const tg = d.isWarmup ? null : L.nextTarget(e, prev[ex.sets.length]);
+      const tg = targetFor(ex, e, prev, d.isWarmup);
       if (tg) { d.weight = tg.weight; d.reps = tg.reps; }
       ui.drafts[exIndex] = d;
     }
     return ui.drafts[exIndex];
+  }
+
+  // Bu setin hedefi: sadece son N sette (Ayarlar), ısınmada yok
+  function targetFor(ex, e, prevSets, isWarmup) {
+    if (isWarmup || !L.isTargetSet(ex.sets.length, ex.targetSets, state.settings.targetLastSets || 2)) return null;
+    return L.nextTarget(e, prevSets[ex.sets.length]);
   }
 
   function confirmSet(exIndex) {
@@ -422,12 +428,9 @@
     }
     const best = h.bestSession;
     const tile = (big, small, sub) => '<div class="tile"><b>' + big + '</b><span>' + small + '</span>' + (sub ? '<em>' + sub + '</em>' : '') + '</div>';
-    const change = h.changePct === null ? '–' : (h.changePct > 0 ? '+' : '') + L.fmtNum(h.changePct) + '%';
     const tiles = '<div class="tiles">' +
-      tile(esc(L.formatSet(h.type, best.best)), 'rekor set', esc(L.dateTr(best.date, { noYear: true }))) +
-      tile(one(h.last.score) + '<small>' + unit + '</small>', isReps ? 'son antrenman' : 'son tahmini 1RM', esc(L.dateTr(h.last.date, { noYear: true }))) +
-      tile(change, 'ilk antrenmana göre', esc(L.dateTr(h.first.date, { noYear: true })) + ' → ' + esc(L.dateTr(h.last.date, { noYear: true }))) +
-      tile(h.sessions.length, 'antrenman', h.prCount + ' rekor') +
+      tile(esc(L.formatSet(h.type, best.best)), 'en iyi setin', esc(L.dateTr(best.date, { noYear: true }))) +
+      tile(h.sessions.length, 'antrenman', h.prCount ? h.prCount + ' kez rekor kırıldı' : 'henüz rekor yok') +
       '</div>';
 
     const recent = h.sessions.slice().reverse().slice(0, 12).map((x) =>
@@ -442,51 +445,62 @@
       '<p class="section-label">Son antrenmanlar</p>' + recent;
   }
 
-  // Tek seri çizgi grafik: her antrenmanın en iyi seti (kg: tahmini 1RM, vücut ağırlığı: tekrar).
-  // Dokunulan nokta üstteki okumada gösterilir; rekorlar dolu işaretle.
+  // Sade çizgi grafik: her antrenmanın en iyi seti tek sayıya çevrilir (kg: güç puanı = tahmini 1RM, vücut ağırlığı: tekrar).
+  // Üstte tek cümlelik özet; çizgide yalnızca rekorlar işaretli; dokunulan antrenman altta yazılır.
   function renderChart(h, isReps, unit) {
     const pts = h.sessions;
     const one = (v) => L.fmtNum(Math.round(v * 10) / 10);
-    const sel = ui.chartSel !== null && ui.chartSel < pts.length ? ui.chartSel : pts.length - 1;
-    const p = pts[sel];
-    const readout = '<div class="chart-read"><span class="muted small">' + esc(L.dateTr(p.date, { noYear: true })) +
-      (p.isPR ? ' · ' + PR_BADGE + ' rekor' : '') + '</span>' +
-      '<b>' + one(p.score) + unit + '</b><span class="muted small">en iyi set ' + esc(L.formatSet(h.type, p.best)) + '</span></div>';
-    const title = '<p class="section-label">' + (isReps ? 'En iyi setteki tekrar' : 'Tahmini 1RM (en iyi set)') + '</p>';
+    const day = (iso) => L.dateTr(iso, { noYear: true });
+    const name = isReps ? 'En iyi setteki tekrar' : 'Güç puanı';
+    const help = isReps ? '' : '<p class="muted small chart-help">Güç puanı, en iyi setinin ağırlığını ve tekrarını tek sayıda birleştirir. ' +
+      'Çizgi yukarı gidiyorsa güçleniyorsun.</p>';
     if (pts.length < 2) {
-      return title + readout + '<p class="muted small">Grafik için en az 2 antrenman gerekli.</p>';
+      return '<p class="section-label">' + name + '</p><p class="chart-head"><b>' + one(pts[0].score) + unit + '</b></p>' + help +
+        '<p class="muted small">Grafik için en az 2 antrenman gerekli.</p>';
     }
-    const W = 340, H = 170, padL = 34, padR = 10, padT = 10, padB = 22;
+    const first = pts[0], last = pts[pts.length - 1];
+    const diff = last.score - first.score;
+    const change = isReps
+      ? (diff > 0 ? '+' : '') + one(diff) + ' tekrar'
+      : (h.changePct > 0 ? '+' : '') + L.fmtNum(h.changePct) + '%';
+    const head = '<p class="section-label">' + name + '</p>' +
+      '<p class="chart-head"><span class="muted">' + one(first.score) + ' → </span><b>' + one(last.score) + unit + '</b> ' +
+      '<span class="prog-pct ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : 'same') + '">' + change + '</span></p>' +
+      '<p class="muted small">' + esc(day(first.date)) + ' – ' + esc(day(last.date)) + ' · ' + pts.length + ' antrenman</p>';
+
+    const sel = ui.chartSel !== null && ui.chartSel < pts.length ? ui.chartSel : null;
+    const W = 340, H = 150, padL = 30, padR = 10, padT = 12, padB = 22;
     const ys = pts.map((x) => x.score);
     let lo = Math.min(...ys), hi = Math.max(...ys);
-    if (hi - lo < (isReps ? 2 : 2)) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
-    const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
-    const t0 = new Date(pts[0].date).getTime(), t1 = new Date(pts[pts.length - 1].date).getTime();
+    if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+    const t0 = new Date(first.date).getTime(), t1 = new Date(last.date).getTime();
     const X = (x) => padL + ((new Date(x.date).getTime() - t0) / Math.max(1, t1 - t0)) * (W - padL - padR);
     const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
-    const grid = [0, 0.5, 1].map((f) => {
-      const v = lo + (hi - lo) * f, y = Y(v).toFixed(1);
+    const grid = [lo, hi].map((v) => {
+      const y = Y(v).toFixed(1);
       return '<line class="grid" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '"/>' +
         '<text class="axis" x="' + (padL - 6) + '" y="' + y + '" dy="0.35em" text-anchor="end">' + Math.round(v) + '</text>';
     }).join('');
     const line = '<polyline class="series" points="' + pts.map((x) => X(x).toFixed(1) + ',' + Y(x.score).toFixed(1)).join(' ') + '"/>';
-    const sx = X(p).toFixed(1);
-    const cross = '<line class="cross" x1="' + sx + '" x2="' + sx + '" y1="' + padT + '" y2="' + (H - padB) + '"/>';
-    const dots = pts.map((x, i) => '<circle class="dot-pt' + (x.isPR ? ' pr' : '') + (i === sel ? ' sel' : '') + '" cx="' + X(x).toFixed(1) +
-      '" cy="' + Y(x.score).toFixed(1) + '" r="' + (i === sel ? 6 : x.isPR ? 5 : 4) + '"/>').join('');
-    // Dokunma alanları: her nokta için işaretten geniş, tam yükseklikte şerit
+    const dots = pts.map((x, i) => (x.isPR || i === sel || i === pts.length - 1)
+      ? '<circle class="dot-pt' + (x.isPR ? ' pr' : '') + (i === sel ? ' sel' : '') + '" cx="' + X(x).toFixed(1) +
+        '" cy="' + Y(x.score).toFixed(1) + '" r="' + (i === sel ? 7 : 5) + '"/>' : '').join('');
     const xs = pts.map(X);
     const hits = pts.map((x, i) => {
-      const a = i === 0 ? padL - 8 : (xs[i - 1] + xs[i]) / 2;
+      const a = i === 0 ? 0 : (xs[i - 1] + xs[i]) / 2;
       const b = i === pts.length - 1 ? W : (xs[i] + xs[i + 1]) / 2;
       return '<rect class="hit" data-action="chart-pt" data-i="' + i + '" x="' + a.toFixed(1) + '" y="0" width="' + Math.max(1, b - a).toFixed(1) + '" height="' + H + '"/>';
     }).join('');
-    const dates = '<text class="axis" x="' + padL + '" y="' + (H - 4) + '">' + esc(L.dateTr(pts[0].date, { noYear: true })) + '</text>' +
-      '<text class="axis" x="' + (W - padR) + '" y="' + (H - 4) + '" text-anchor="end">' + esc(L.dateTr(pts[pts.length - 1].date, { noYear: true })) + '</text>';
-    return title + readout +
-      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc((isReps ? 'Tekrar' : 'Tahmini 1RM') + ' gelişimi, ' + pts.length + ' antrenman') + '">' +
-      grid + cross + line + dots + dates + hits + '</svg>' +
-      '<p class="muted small legend"><i class="lg-dot"></i> antrenman <i class="lg-dot pr"></i> rekor · noktaya dokun</p>';
+    const dates = '<text class="axis" x="' + padL + '" y="' + (H - 4) + '">' + esc(day(first.date)) + '</text>' +
+      '<text class="axis" x="' + (W - padR) + '" y="' + (H - 4) + '" text-anchor="end">' + esc(day(last.date)) + '</text>';
+    const p = sel === null ? null : pts[sel];
+    const readout = p
+      ? '<p class="small chart-read">' + (p.isPR ? PR_BADGE + ' ' : '') + '<b>' + esc(day(p.date)) + ':</b> en iyi set ' + esc(L.formatSet(h.type, p.best)) +
+        (isReps ? '' : ' <span class="muted">(güç puanı ' + one(p.score) + ')</span>') + '</p>'
+      : '<p class="muted small chart-read"><i class="lg-dot pr"></i> rekor kırdığın antrenmanlar · bir güne dokun, o günün setini gör</p>';
+    return head +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(name + ': ' + one(first.score) + ' → ' + one(last.score)) + '">' +
+      grid + line + dots + dates + hits + '</svg>' + readout + help;
   }
 
   function cardioRow(c, i, workoutId) {
@@ -700,14 +714,18 @@
     if (focused && !done) {
       const d = draftFor(w, i);
       const n = ex.sets.length + 1;
-      const tg = d.isWarmup ? null : L.nextTarget(e, prev.sets[ex.sets.length]);
+      const tg = targetFor(ex, e, prev.sets, d.isWarmup);
+      const pSame = prev.sets[ex.sets.length];
       const onTarget = tg && d.weight === tg.weight && d.reps === tg.reps;
       const target = tg
         ? '<button class="target' + (onTarget ? ' on' : '') + '" data-action="apply-target" data-ex="' + i + '" data-tw="' + tg.weight +
           '" data-tr="' + tg.reps + '">🎯 Hedef: <b>' + esc(L.formatSet(e.type, tg)) + '</b>' +
           '<span class="muted small">' + (tg.kind === 'weight' ? ' · ağırlığı artır' : ' · +1 tekrar') +
           (onTarget ? '' : ' · uygula') + '</span></button>'
-        : '';
+        : (!d.isWarmup && pSame && !pSame.isWarmup
+          ? '<p class="muted small easy-set">Hazırlık seti · geçen seferki gibi (' + esc(L.formatSet(e.type, pSame)) + '). Hedef son ' +
+            (state.settings.targetLastSets === 1 ? 'sette' : '2 sette') + '.</p>'
+          : '');
       active = '<div class="active-set">' +
         '<div class="active-head"><span>Set ' + n + (ex.targetSets ? ' / ' + ex.targetSets : '') + '</span>' +
         '<button class="chip' + (d.isWarmup ? ' on' : '') + '" data-action="toggle-warmup" data-ex="' + i + '">Isınma</button></div>' +
@@ -762,11 +780,22 @@
       return L.trend(e.type, prev ? L.bestSet(e.type, prev.sets) : null, L.bestSet(e.type, ex.sets)) === 'up';
     }).length;
     const cardioMin = L.cardioMinutes(w);
-    const prCount = workoutRecords(w).reduce((t, f) => t + f.filter(Boolean).length, 0);
+    const recs = workoutRecords(w);
+    const prList = w.exercises.map((ex, i) => {
+      const e = exercise(ex.exerciseId);
+      const sets = ex.sets.filter((s, si) => recs[i][si]);
+      return sets.length ? '<li><b>' + esc(e.name) + '</b> <span class="muted">' + sets.map((s) => esc(L.formatSet(e.type, s))).join(', ') + '</span></li>' : '';
+    }).filter(Boolean);
+    const prCount = recs.reduce((t, f) => t + f.filter(Boolean).length, 0);
+    const upNames = w.exercises.filter((ex) => {
+      const e = exercise(ex.exerciseId);
+      const prev = L.lastPerformance(state.workouts, ex.exerciseId, w.id);
+      return L.trend(e.type, prev ? L.bestSet(e.type, prev.sets) : null, L.bestSet(e.type, ex.sets)) === 'up';
+    }).map((ex) => exercise(ex.exerciseId).name);
     return '<header class="top"><div><h1>Tebrikler 💪</h1><p class="muted">' + esc(w.name) + ' · ' + mins + ' dk' +
       (cardioMin ? ' · ' + cardioMin + ' dk kardiyo' : '') + '</p></div></header>' +
-      (prCount ? '<p class="highlight pr-line">🏆 Bugün ' + prCount + ' kişisel rekor kırdın</p>' : '') +
-      (ups ? '<p class="highlight">' + ups + ' harekette geçen seferden daha iyiydin.</p>' : '') +
+      (prCount ? '<div class="highlight"><p class="pr-line">🏆 Bugün ' + prCount + ' kişisel rekor kırdın</p><ul class="pr-list">' + prList.join('') + '</ul></div>' : '') +
+      (ups ? '<p class="highlight">Geçen seferden daha iyi: <b>' + upNames.map(esc).join(', ') + '</b></p>' : '') +
       (rows ? '<section class="card"><p class="section-label">En iyi setler</p>' + rows + '</section>' : '') +
       '<button class="primary wide" data-action="go-home">Ana sayfa</button>';
   }
@@ -810,6 +839,11 @@
       '<button class="primary wide" data-action="export">Yedeği dışa aktar</button>' +
       '<label class="ghost-btn file-btn">Yedekten geri yükle<input type="file" accept="application/json,.json" data-action="import" hidden></label>' +
       '</section>' +
+      '<section class="card"><p class="section-label">Hedef önerisi</p>' +
+      '<p class="small">🎯 hedef hangi setlerde verilsin? Önceki setler geçen seferki gibi gelir.</p><div class="chips">' +
+      [[1, 'Son set'], [2, 'Son 2 set']].map(([n, label]) =>
+        '<button class="chip-tab' + ((state.settings.targetLastSets || 2) === n ? ' on' : '') + '" data-action="target-last" data-n="' + n + '">' + label + '</button>').join('') +
+      '</div></section>' +
       '<section class="card"><p class="section-label">Haftalık kardiyo hedefi</p>' +
       stepperPlain('goal', state.settings.weeklyCardioGoal, 'dk') + '</section>' +
       daySections +
@@ -1042,6 +1076,12 @@
       render();
     },
     'confirm-set': (el) => confirmSet(Number(el.dataset.ex)),
+    'target-last': (el) => {
+      state.settings.targetLastSets = Number(el.dataset.n);
+      ui.drafts = {};
+      persist();
+      render();
+    },
     'apply-target': (el) => {
       const d = draftFor(activeWorkout(), Number(el.dataset.ex));
       d.weight = Number(el.dataset.tw);
