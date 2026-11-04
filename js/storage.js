@@ -11,7 +11,7 @@
   'use strict';
 
   const KEY = 'progressive.data';
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
 
   function uid(prefix) {
     return (prefix || 'id') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -35,13 +35,25 @@
   // Eski şema sürümlerinden yükseltme burada yapılacak.
   function migrate(state) {
     if (!state || typeof state !== 'object') return initialState();
-    if (!state.schemaVersion) state.schemaVersion = SCHEMA_VERSION;
+    if (!state.schemaVersion) state.schemaVersion = 1;
     state.exercises = state.exercises || {};
     state.templates = state.templates || [];
     state.workouts = state.workouts || [];
     state.settings = Object.assign({ weeklyCardioGoal: 150, lastBackupAt: null }, state.settings || {});
     if (state.activeWorkoutId && !state.workouts.some((w) => w.id === state.activeWorkoutId)) {
       state.activeWorkoutId = null;
+    }
+    // v2: hareketlere tekrar aralığı (hedef önerisi için). Var olan değerlere dokunma.
+    if (state.schemaVersion < 2) {
+      const defaults = {};
+      for (const e of Seed.EXERCISES) defaults[e.id] = e;
+      for (const id of Object.keys(state.exercises)) {
+        const ex = state.exercises[id];
+        const d = defaults[id];
+        if (!(ex.repMin > 0)) ex.repMin = d ? d.repMin : (ex.type === 'bodyweight' ? 6 : 8);
+        if (!(ex.repMax > ex.repMin)) ex.repMax = d ? d.repMax : (ex.type === 'bodyweight' ? 15 : 12);
+      }
+      state.schemaVersion = 2;
     }
     return state;
   }

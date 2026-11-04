@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 9;
+  const APP_VERSION = 10;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -16,7 +16,7 @@
 
   let state = Store.load(storage);
   const ui = {
-    view: state.activeWorkoutId ? 'workout' : 'home', // home | workout | summary | settings | history | detail | overview
+    view: state.activeWorkoutId ? 'workout' : 'home', // home | workout | summary | settings | history | detail | overview | exercise
     detailId: null,     // geçmişte açık antrenman
     ovKind: 'week',     // özet: 'week' | 'month'
     ovOffset: 0,        // özet: 0 = bu dönem, -1 = önceki ...
@@ -26,6 +26,9 @@
     drafts: {},         // { [exIndex]: { weight, reps, isWarmup } } henüz kaydedilmemiş set
     sheet: null,        // açık alt panel
     summaryWorkoutId: null,
+    exerciseId: null,   // hareket sayfası
+    exBack: 'home',     // hareket sayfasından dönülecek ekran
+    chartSel: null,     // grafikte seçili nokta
   };
 
   const $app = document.getElementById('app');
@@ -87,6 +90,16 @@
     return type === 'bodyweight' ? 'Ek ağırlık' : type === 'assisted' ? 'Destek' : 'Ağırlık';
   }
 
+  const PR_BADGE = '<span class="pr" title="Kişisel rekor" aria-label="Kişisel rekor">🏆</span>';
+
+  // Bir antrenmandaki her hareketin rekor bayrakları (o antrenmandan önceki tüm kayıtlara göre)
+  function workoutRecords(w) {
+    return w.exercises.map((ex) => {
+      const type = exercise(ex.exerciseId).type;
+      return L.recordFlags(type, ex.sets, L.priorBest(state.workouts, type, ex.exerciseId, w.startedAt, w.id));
+    });
+  }
+
   function trendIcon(t) {
     return { up: '<span class="trend up">↑</span>', down: '<span class="trend down">↓</span>',
       same: '<span class="trend same">=</span>', new: '<span class="trend new">yeni</span>' }[t] || '';
@@ -134,7 +147,12 @@
     if (!ui.drafts[exIndex]) {
       const ex = w.exercises[exIndex];
       const prev = prevSetsFor(ex.exerciseId, w.id).sets;
-      ui.drafts[exIndex] = L.prefill(prev, ex.sets, ex.sets.length, exercise(ex.exerciseId));
+      const e = exercise(ex.exerciseId);
+      const d = L.prefill(prev, ex.sets, ex.sets.length, e);
+      // Geçen seferin aynı seti biliniyorsa doğrudan bugünkü hedefle doldur (tutturursan tek dokunuş)
+      const tg = d.isWarmup ? null : L.nextTarget(e, prev[ex.sets.length]);
+      if (tg) { d.weight = tg.weight; d.reps = tg.reps; }
+      ui.drafts[exIndex] = d;
     }
     return ui.drafts[exIndex];
   }
@@ -157,6 +175,9 @@
     });
     delete ui.drafts[exIndex];
     persist();
+    const type = exercise(ex.exerciseId).type;
+    const flags = L.recordFlags(type, ex.sets, L.priorBest(state.workouts, type, ex.exerciseId, w.startedAt, w.id));
+    if (flags[flags.length - 1]) toast('🏆 Yeni rekor: ' + L.formatSet(type, ex.sets[ex.sets.length - 1]));
     // Hareket bitti ise sıradaki bitmemiş harekete geç
     if (ex.sets.length >= ex.targetSets) {
       const next = w.exercises.findIndex((e, i) => i > exIndex && e.sets.length < e.targetSets);
@@ -273,6 +294,7 @@
       : ui.view === 'history' ? renderHistory()
       : ui.view === 'detail' ? renderDetail()
       : ui.view === 'overview' ? renderOverview()
+      : ui.view === 'exercise' ? renderExercisePage()
       : renderHome();
     const tabs = TAB_VIEWS.includes(ui.view);
     document.body.classList.toggle('has-tabbar', tabs);
@@ -353,6 +375,7 @@
     const w = state.workouts.find((x) => x.id === ui.detailId);
     const d = new Date(w.startedAt);
     const when = L.dateTr(w.startedAt, { withTime: true }) + ', ' + d.toLocaleDateString('tr-TR', { weekday: 'long' });
+    const records = workoutRecords(w);
     const cards = w.exercises.map((ex, i) => {
       const e = exercise(ex.exerciseId);
       const best = L.bestSet(e.type, ex.sets);
@@ -360,8 +383,9 @@
         '<button class="set-row done" data-action="edit-set" data-w="' + esc(w.id) + '" data-ex="' + i + '" data-si="' + si + '">' +
         '<span class="set-no">' + (s.isWarmup ? 'Is' : si + 1) + '</span>' +
         '<span class="set-val' + (s.isWarmup ? ' warm' : '') + '">' + esc(L.formatSet(e.type, s)) + '</span>' +
-        (s === best ? '<span class="best-tag">en iyi</span>' : '') + '<span class="edit-hint">✎</span></button>').join('');
-      return '<section class="card"><h3>' + esc(e.name) + '</h3><div class="sets">' +
+        (s === best ? '<span class="best-tag">en iyi</span>' : '') + (records[i][si] ? PR_BADGE : '') +
+        '<span class="edit-hint">✎</span></button>').join('');
+      return '<section class="card">' + exerciseTitle(e) + '<div class="sets">' +
         (rows || '<p class="muted small">Set yok</p>') + '</div></section>';
     }).join('');
     const cardio = w.cardio.map((c, i) => cardioRow(c, i, w.id)).join('');
@@ -372,6 +396,97 @@
       '<section class="cardio-section"><p class="section-label">Kardiyo</p>' + cardio +
       '<button class="ghost-btn" data-action="add-cardio" data-w="' + esc(w.id) + '">+ Kardiyo ekle</button></section>' +
       '<button class="text-btn danger" data-action="delete-workout" data-id="' + esc(w.id) + '">Bu antrenmanı sil</button>';
+  }
+
+  // Hareket adı: dokununca hareket sayfası (grafik, rekorlar) açılır
+  function exerciseTitle(e) {
+    return '<h3><button class="link-name" data-action="open-exercise" data-id="' + esc(e.id) + '">' + esc(e.name) +
+      ' <span class="chev">›</span></button></h3>';
+  }
+
+  // ---------- Hareket sayfası: gelişim grafiği, rekorlar, son antrenmanlar ----------
+
+  function renderExercisePage() {
+    const e = exercise(ui.exerciseId);
+    const h = L.exerciseHistory(state, e.id);
+    const isReps = h.metric === 'reps';
+    const one = (v) => L.fmtNum(Math.round(v * 10) / 10);
+    const unit = isReps ? ' tekrar' : ' kg';
+    const r = L.repRange(e);
+    const header = '<header class="top"><button class="icon-btn" data-action="ex-back" aria-label="Geri">‹</button>' +
+      '<div class="center"><h2>' + esc(e.name) + '</h2><p class="muted small">' +
+      (isReps ? 'Vücut ağırlığı · tekrar' : 'Tekrar aralığı ' + r.min + '–' + r.max) + '</p></div>' +
+      '<button class="icon-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '" aria-label="Hareket ayarları">⚙︎</button></header>';
+    if (!h.sessions.length) {
+      return header + '<p class="muted empty">Bu hareket için henüz bitmiş antrenman yok. İlk antrenmandan sonra gelişimin burada görünecek.</p>';
+    }
+    const best = h.bestSession;
+    const tile = (big, small, sub) => '<div class="tile"><b>' + big + '</b><span>' + small + '</span>' + (sub ? '<em>' + sub + '</em>' : '') + '</div>';
+    const change = h.changePct === null ? '–' : (h.changePct > 0 ? '+' : '') + L.fmtNum(h.changePct) + '%';
+    const tiles = '<div class="tiles">' +
+      tile(esc(L.formatSet(h.type, best.best)), 'rekor set', esc(L.dateTr(best.date, { noYear: true }))) +
+      tile(one(h.last.score) + '<small>' + unit + '</small>', isReps ? 'son antrenman' : 'son tahmini 1RM', esc(L.dateTr(h.last.date, { noYear: true }))) +
+      tile(change, 'ilk antrenmana göre', esc(L.dateTr(h.first.date, { noYear: true })) + ' → ' + esc(L.dateTr(h.last.date, { noYear: true }))) +
+      tile(h.sessions.length, 'antrenman', h.prCount + ' rekor') +
+      '</div>';
+
+    const recent = h.sessions.slice().reverse().slice(0, 12).map((x) =>
+      '<button class="hist-card" data-action="open-workout" data-id="' + esc(x.workoutId) + '">' +
+      '<span class="hist-top"><b>' + esc(L.dateTr(x.date, { noYear: true })) + ' <span class="muted small">' + esc(x.workoutName || '') + '</span></b>' +
+      '<span class="small">' + (x.isPR ? PR_BADGE + ' ' : '') + 'en iyi ' + esc(L.formatSet(h.type, x.best)) + '</span></span>' +
+      '<span class="muted small">' + x.sets.map((st) => (st.isWarmup ? 'Is ' : '') + L.formatSet(h.type, st)).map(esc).join(' · ') + '</span></button>').join('');
+
+    return header +
+      '<section class="card">' + renderChart(h, isReps, unit) + '</section>' +
+      tiles +
+      '<p class="section-label">Son antrenmanlar</p>' + recent;
+  }
+
+  // Tek seri çizgi grafik: her antrenmanın en iyi seti (kg: tahmini 1RM, vücut ağırlığı: tekrar).
+  // Dokunulan nokta üstteki okumada gösterilir; rekorlar dolu işaretle.
+  function renderChart(h, isReps, unit) {
+    const pts = h.sessions;
+    const one = (v) => L.fmtNum(Math.round(v * 10) / 10);
+    const sel = ui.chartSel !== null && ui.chartSel < pts.length ? ui.chartSel : pts.length - 1;
+    const p = pts[sel];
+    const readout = '<div class="chart-read"><span class="muted small">' + esc(L.dateTr(p.date, { noYear: true })) +
+      (p.isPR ? ' · ' + PR_BADGE + ' rekor' : '') + '</span>' +
+      '<b>' + one(p.score) + unit + '</b><span class="muted small">en iyi set ' + esc(L.formatSet(h.type, p.best)) + '</span></div>';
+    const title = '<p class="section-label">' + (isReps ? 'En iyi setteki tekrar' : 'Tahmini 1RM (en iyi set)') + '</p>';
+    if (pts.length < 2) {
+      return title + readout + '<p class="muted small">Grafik için en az 2 antrenman gerekli.</p>';
+    }
+    const W = 340, H = 170, padL = 34, padR = 10, padT = 10, padB = 22;
+    const ys = pts.map((x) => x.score);
+    let lo = Math.min(...ys), hi = Math.max(...ys);
+    if (hi - lo < (isReps ? 2 : 2)) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+    const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+    const t0 = new Date(pts[0].date).getTime(), t1 = new Date(pts[pts.length - 1].date).getTime();
+    const X = (x) => padL + ((new Date(x.date).getTime() - t0) / Math.max(1, t1 - t0)) * (W - padL - padR);
+    const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+    const grid = [0, 0.5, 1].map((f) => {
+      const v = lo + (hi - lo) * f, y = Y(v).toFixed(1);
+      return '<line class="grid" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '"/>' +
+        '<text class="axis" x="' + (padL - 6) + '" y="' + y + '" dy="0.35em" text-anchor="end">' + Math.round(v) + '</text>';
+    }).join('');
+    const line = '<polyline class="series" points="' + pts.map((x) => X(x).toFixed(1) + ',' + Y(x.score).toFixed(1)).join(' ') + '"/>';
+    const sx = X(p).toFixed(1);
+    const cross = '<line class="cross" x1="' + sx + '" x2="' + sx + '" y1="' + padT + '" y2="' + (H - padB) + '"/>';
+    const dots = pts.map((x, i) => '<circle class="dot-pt' + (x.isPR ? ' pr' : '') + (i === sel ? ' sel' : '') + '" cx="' + X(x).toFixed(1) +
+      '" cy="' + Y(x.score).toFixed(1) + '" r="' + (i === sel ? 6 : x.isPR ? 5 : 4) + '"/>').join('');
+    // Dokunma alanları: her nokta için işaretten geniş, tam yükseklikte şerit
+    const xs = pts.map(X);
+    const hits = pts.map((x, i) => {
+      const a = i === 0 ? padL - 8 : (xs[i - 1] + xs[i]) / 2;
+      const b = i === pts.length - 1 ? W : (xs[i] + xs[i + 1]) / 2;
+      return '<rect class="hit" data-action="chart-pt" data-i="' + i + '" x="' + a.toFixed(1) + '" y="0" width="' + Math.max(1, b - a).toFixed(1) + '" height="' + H + '"/>';
+    }).join('');
+    const dates = '<text class="axis" x="' + padL + '" y="' + (H - 4) + '">' + esc(L.dateTr(pts[0].date, { noYear: true })) + '</text>' +
+      '<text class="axis" x="' + (W - padR) + '" y="' + (H - 4) + '" text-anchor="end">' + esc(L.dateTr(pts[pts.length - 1].date, { noYear: true })) + '</text>';
+    return title + readout +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc((isReps ? 'Tekrar' : 'Tahmini 1RM') + ' gelişimi, ' + pts.length + ' antrenman') + '">' +
+      grid + cross + line + dots + dates + hits + '</svg>' +
+      '<p class="muted small legend"><i class="lg-dot"></i> antrenman <i class="lg-dot pr"></i> rekor · noktaya dokun</p>';
   }
 
   function cardioRow(c, i, workoutId) {
@@ -440,9 +555,9 @@
         }
         const sub = p.sessions + ' antrenman · en iyi set ' + L.formatSet(e.type, p.best) +
           (p.comparedTo === 'earlier' ? ' · önceki dönemde yok, son antrenmanla kıyas' : '');
-        return '<div class="prog-row"><div class="prog-main"><span class="prog-name">' + esc(e.name) + '</span>' +
-          '<span class="prog-val">' + values + ' ' + trendIcon(p.trend) + (change ? '<span class="prog-pct ' + p.trend + '">' + change + '</span>' : '') + '</span></div>' +
-          '<p class="muted small">' + esc(sub) + '</p></div>';
+        return '<button class="prog-row" data-action="open-exercise" data-id="' + esc(e.id) + '"><span class="prog-main"><span class="prog-name">' + esc(e.name) + ' <span class="chev">›</span></span>' +
+          '<span class="prog-val">' + values + ' ' + trendIcon(p.trend) + (change ? '<span class="prog-pct ' + p.trend + '">' + change + '</span>' : '') + '</span></span>' +
+          '<span class="muted small prog-sub">' + esc(sub) + '</span></button>';
       }).join('');
       const allNew = sum.exerciseProgress.every((p) => p.trend === 'new');
       const headline = allNew ? 'Bu hareketler ilk kez kaydedildi'
@@ -570,22 +685,33 @@
       : '<p class="prev muted">İlk kez yapıyorsun</p>';
 
 
+    const flags = L.recordFlags(e.type, ex.sets, L.priorBest(state.workouts, e.type, ex.exerciseId, w.startedAt, w.id));
     const doneSets = ex.sets.map((s, si) => {
       const p = prev.sets[si];
       let t = '';
       if (p && !s.isWarmup && !p.isWarmup) t = trendIcon(L.trend(e.type, p, s));
       return '<button class="set-row done" data-action="edit-set" data-ex="' + i + '" data-si="' + si + '">' +
         '<span class="set-no">' + (s.isWarmup ? 'Is' : si + 1) + '</span>' +
-        '<span class="set-val">' + esc(L.formatSet(e.type, s)) + '</span>' + t + '<span class="check">✓</span></button>';
+        '<span class="set-val">' + esc(L.formatSet(e.type, s)) + '</span>' + t + (flags[si] ? PR_BADGE : '') +
+        '<span class="check">✓</span></button>';
     }).join('');
 
     let active = '';
     if (focused && !done) {
       const d = draftFor(w, i);
       const n = ex.sets.length + 1;
+      const tg = d.isWarmup ? null : L.nextTarget(e, prev.sets[ex.sets.length]);
+      const onTarget = tg && d.weight === tg.weight && d.reps === tg.reps;
+      const target = tg
+        ? '<button class="target' + (onTarget ? ' on' : '') + '" data-action="apply-target" data-ex="' + i + '" data-tw="' + tg.weight +
+          '" data-tr="' + tg.reps + '">🎯 Hedef: <b>' + esc(L.formatSet(e.type, tg)) + '</b>' +
+          '<span class="muted small">' + (tg.kind === 'weight' ? ' · ağırlığı artır' : ' · +1 tekrar') +
+          (onTarget ? '' : ' · uygula') + '</span></button>'
+        : '';
       active = '<div class="active-set">' +
         '<div class="active-head"><span>Set ' + n + (ex.targetSets ? ' / ' + ex.targetSets : '') + '</span>' +
         '<button class="chip' + (d.isWarmup ? ' on' : '') + '" data-action="toggle-warmup" data-ex="' + i + '">Isınma</button></div>' +
+        target +
         '<div class="steppers">' +
         stepper(weightLabel(e.type) + ' (kg)', 'weight', i, L.fmtNum(d.weight)) +
         stepper('Tekrar', 'reps', i, String(d.reps)) +
@@ -626,7 +752,7 @@
       const prev = L.lastPerformance(state.workouts, ex.exerciseId, w.id);
       const prevBest = prev ? L.bestSet(e.type, prev.sets) : null;
       const t = L.trend(e.type, prevBest, best);
-      return '<div class="sum-row"><span>' + esc(e.name) + '</span><span>' +
+      return '<div class="sum-row"><button class="link-name" data-action="open-exercise" data-id="' + esc(e.id) + '">' + esc(e.name) + '</button><span>' +
         (prevBest ? '<span class="muted">' + esc(L.formatSet(e.type, prevBest)) + ' → </span>' : '') +
         '<b>' + esc(L.formatSet(e.type, best)) + '</b> ' + trendIcon(t) + '</span></div>';
     }).join('');
@@ -636,8 +762,10 @@
       return L.trend(e.type, prev ? L.bestSet(e.type, prev.sets) : null, L.bestSet(e.type, ex.sets)) === 'up';
     }).length;
     const cardioMin = L.cardioMinutes(w);
+    const prCount = workoutRecords(w).reduce((t, f) => t + f.filter(Boolean).length, 0);
     return '<header class="top"><div><h1>Tebrikler 💪</h1><p class="muted">' + esc(w.name) + ' · ' + mins + ' dk' +
       (cardioMin ? ' · ' + cardioMin + ' dk kardiyo' : '') + '</p></div></header>' +
+      (prCount ? '<p class="highlight pr-line">🏆 Bugün ' + prCount + ' kişisel rekor kırdın</p>' : '') +
       (ups ? '<p class="highlight">' + ups + ' harekette geçen seferden daha iyiydin.</p>' : '') +
       (rows ? '<section class="card"><p class="section-label">En iyi setler</p>' + rows + '</section>' : '') +
       '<button class="primary wide" data-action="go-home">Ana sayfa</button>';
@@ -719,7 +847,8 @@
   }
 
   function sheetExercise(s) {
-    const e = s.id ? exercise(s.id) : { name: '', type: 'weighted', weightStep: 2.5, machineSetting: '' };
+    const e = s.id ? exercise(s.id) : { name: '', type: 'weighted', weightStep: 2.5, machineSetting: '', repMin: 8, repMax: 12 };
+    const rr = L.repRange(e);
     const types = [['weighted', 'Ağırlık × tekrar'], ['bodyweight', 'Vücut ağırlığı']];
     // Yeni harekette hangi güne (Push / Pull) ekleneceği seçilir
     const days = state.templates.filter((t) => t.kind === 'strength');
@@ -734,6 +863,10 @@
       '<label class="field">Ad<input name="name" value="' + esc(e.name) + '" autocomplete="off"></label>' +
       dayField +
       '<label class="field">Ağırlık adımı (kg)<input name="weightStep" inputmode="decimal" value="' + esc(L.fmtNum(e.weightStep)) + '"></label>' +
+      '<div class="field">Tekrar aralığı<div class="range-row">' +
+      '<input name="repMin" inputmode="numeric" value="' + rr.min + '" aria-label="En az tekrar"><span>–</span>' +
+      '<input name="repMax" inputmode="numeric" value="' + rr.max + '" aria-label="En çok tekrar"></div>' +
+      '<p class="muted small">Hedef önerisi için: üst sınıra ulaşınca ağırlık artırılır, alt sınırdan devam edilir.</p></div>' +
       '<div class="field">Tip<div class="chips">' + types.map(([v, n]) =>
         '<label class="chip-radio"><input type="radio" name="type" value="' + v + '"' + (e.type === v ? ' checked' : '') + '><span>' + n + '</span></label>').join('') +
       '</div><p class="muted small">Vücut ağırlığında girilen ağırlık ek yüktür (ör. bele takılan plaka).</p></div>' +
@@ -859,7 +992,8 @@
     const ex = w.exercises[s.ex];
     const e = exercise(ex.exerciseId);
     return '<h3>' + esc(e.name) + '</h3>' +
-      '<button class="row-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '">Ayarlar (ad, ağırlık adımı)</button>' +
+      '<button class="row-btn" data-action="open-exercise" data-id="' + esc(e.id) + '">📈 Gelişim grafiği ve rekorlar</button>' +
+      '<button class="row-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '">Ayarlar (ad, ağırlık adımı, tekrar aralığı)</button>' +
       (s.ex > 0 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="-1">↑ Yukarı taşı</button>' : '') +
       (s.ex < w.exercises.length - 1 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="1">↓ Aşağı taşı</button>' : '') +
       (ex.targetSets > ex.sets.length && ex.targetSets > 1 ? '<button class="row-btn" data-action="remove-planned" data-ex="' + s.ex + '">Planlanan seti azalt (−1)</button>' : '') +
@@ -908,6 +1042,27 @@
       render();
     },
     'confirm-set': (el) => confirmSet(Number(el.dataset.ex)),
+    'apply-target': (el) => {
+      const d = draftFor(activeWorkout(), Number(el.dataset.ex));
+      d.weight = Number(el.dataset.tw);
+      d.reps = Number(el.dataset.tr);
+      render();
+    },
+    'open-exercise': (el) => {
+      if (ui.view !== 'exercise') ui.exBack = ui.view;
+      ui.exerciseId = el.dataset.id;
+      ui.chartSel = null;
+      ui.sheet = null;
+      ui.view = 'exercise';
+      render();
+      window.scrollTo(0, 0);
+    },
+    'ex-back': () => {
+      ui.view = ui.exBack || 'home';
+      render();
+      window.scrollTo(0, 0);
+    },
+    'chart-pt': (el) => { ui.chartSel = Number(el.dataset.i); render(); },
     'add-set': (el) => {
       const w = activeWorkout();
       const i = Number(el.dataset.ex);
@@ -1157,6 +1312,9 @@
       const name = String(f.get('name') || '').trim();
       if (!name) { toast('Ad boş olamaz'); return; }
       const step = L.parseNum(f.get('weightStep'));
+      const rMin = parseInt(f.get('repMin'), 10);
+      const rMax = parseInt(f.get('repMax'), 10);
+      if (!(rMin > 0 && rMax > rMin && rMax <= 50)) { toast('Tekrar aralığı geçersiz (ör. 6–10)'); return; }
       let id = form.dataset.id;
       let addedTo = null;
       const toWorkout = !id && !!(ui.sheet && ui.sheet.addToWorkout && activeWorkout());
@@ -1166,7 +1324,7 @@
         if (!toWorkout && !t) { toast('Push ya da Pull seç'); return; }
         id = Store.uid('ex');
         state.exercises[id] = { id, name, type: 'weighted', weightStep: 2.5, machineSetting: '',
-          primaryMuscles: [], secondaryMuscles: [], archived: false, isCustom: true };
+          repMin: 8, repMax: 12, primaryMuscles: [], secondaryMuscles: [], archived: false, isCustom: true };
         if (t) {
           t.items.push({ exerciseId: id, targetSets: 3 });
           addedTo = t;
@@ -1176,6 +1334,8 @@
       e.name = name;
       if (step && step > 0) e.weightStep = step;
       e.type = f.get('type') || e.type;
+      e.repMin = rMin;
+      e.repMax = rMax;
       persist();
       closeSheet();
       if (toWorkout) {

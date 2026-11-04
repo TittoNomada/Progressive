@@ -11,29 +11,30 @@
 
   // type: 'weighted' (ağırlık × tekrar) | 'bodyweight' (tekrar, ağırlık = ek yük) |
   //       'assisted' (ağırlık = karşı/destek ağırlığı, azalması ilerlemedir)
+  // repMin / repMax: çift ilerleme için tekrar aralığı (hedef önerisi). Ayarlar'dan değiştirilebilir.
   // primaryMuscles / secondaryMuscles: şimdilik arayüzde kullanılmıyor (ileride hacim hesabı için).
   const EXERCISES = [
-    { id: 'chest-press', name: 'Chest press', type: 'weighted', weightStep: 2.5,
+    { id: 'chest-press', repMin: 6, repMax: 10, name: 'Chest press', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['chest'], secondaryMuscles: ['triceps', 'front-delt'] },
-    { id: 'fly', name: 'Fly', type: 'weighted', weightStep: 7,
+    { id: 'fly', repMin: 6, repMax: 10, name: 'Fly', type: 'weighted', weightStep: 7,
       primaryMuscles: ['chest'], secondaryMuscles: ['front-delt'] },
-    { id: 'dips', name: 'Dips', type: 'bodyweight', weightStep: 2.5,
+    { id: 'dips', repMin: 6, repMax: 15, name: 'Dips', type: 'bodyweight', weightStep: 2.5,
       primaryMuscles: ['chest', 'triceps'], secondaryMuscles: ['front-delt'] },
-    { id: 'shoulder-press', name: 'Shoulder press', type: 'weighted', weightStep: 2.5,
+    { id: 'shoulder-press', repMin: 6, repMax: 10, name: 'Shoulder press', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['front-delt'], secondaryMuscles: ['side-delt', 'triceps'] },
-    { id: 'lateral-cable-raise', name: 'Lateral cable raise', type: 'weighted', weightStep: 2.5,
+    { id: 'lateral-cable-raise', repMin: 8, repMax: 12, name: 'Lateral cable raise', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['side-delt'], secondaryMuscles: [] },
-    { id: 'pull-up', name: 'Pull up', type: 'bodyweight', weightStep: 2.5,
+    { id: 'pull-up', repMin: 4, repMax: 12, name: 'Pull up', type: 'bodyweight', weightStep: 2.5,
       primaryMuscles: ['lats'], secondaryMuscles: ['biceps', 'upper-back'] },
-    { id: 'lat-pulldown', name: 'Lat pulldown', type: 'weighted', weightStep: 2.5,
+    { id: 'lat-pulldown', repMin: 6, repMax: 10, name: 'Lat pulldown', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['lats'], secondaryMuscles: ['biceps', 'upper-back'] },
-    { id: 'seated-row', name: 'Seated row', type: 'weighted', weightStep: 2.5,
+    { id: 'seated-row', repMin: 6, repMax: 10, name: 'Seated row', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['upper-back', 'lats'], secondaryMuscles: ['biceps', 'rear-delt'] },
-    { id: 'face-pull', name: 'Face pull', type: 'weighted', weightStep: 2.5,
+    { id: 'face-pull', repMin: 10, repMax: 15, name: 'Face pull', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['rear-delt'], secondaryMuscles: ['upper-back'] },
-    { id: 'reverse-crunch', name: 'Ters mekik', type: 'bodyweight', weightStep: 2.5,
+    { id: 'reverse-crunch', repMin: 8, repMax: 20, name: 'Ters mekik', type: 'bodyweight', weightStep: 2.5,
       primaryMuscles: ['abs'], secondaryMuscles: [] },
-    { id: 'dumbbell-curl', name: 'Dumbbell curl', type: 'weighted', weightStep: 2.5,
+    { id: 'dumbbell-curl', repMin: 8, repMax: 12, name: 'Dumbbell curl', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['biceps'], secondaryMuscles: ['forearms'] },
   ];
 

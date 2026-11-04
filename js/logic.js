@@ -106,6 +106,87 @@
     return c > 0 ? 'up' : c < 0 ? 'down' : 'same';
   }
 
+  // ---------- Hedef önerisi (çift ilerleme) ----------
+
+  function repRange(ex) {
+    const min = ex && ex.repMin > 0 ? ex.repMin : 6;
+    const max = ex && ex.repMax > min ? ex.repMax : Math.max(min + 4, 12);
+    return { min, max };
+  }
+
+  // Geçen seferin aynı sıradaki setine göre bu setin hedefi:
+  // tekrar aralığının tepesine ulaşılmadıysa +1 tekrar, ulaşıldıysa +1 ağırlık adımı ve aralığın alt ucu.
+  // Vücut ağırlığında hep +1 tekrar.
+  function nextTarget(ex, prev) {
+    if (!prev || prev.isWarmup || !(prev.reps > 0)) return null;
+    const type = ex ? ex.type : 'weighted';
+    if (type === 'bodyweight' || type === 'assisted') {
+      return { weight: prev.weight || 0, reps: prev.reps + 1, kind: 'reps' };
+    }
+    const r = repRange(ex);
+    if (prev.reps < r.max) return { weight: prev.weight, reps: prev.reps + 1, kind: 'reps' };
+    return { weight: stepValue(prev.weight, ex.weightStep || 2.5, 1), reps: r.min, kind: 'weight' };
+  }
+
+  // ---------- Kişisel rekor ----------
+
+  // Bu antrenmandan önceki (başlangıç zamanına göre) tüm bitmiş antrenmanlardaki en iyi set
+  function priorBest(workouts, type, exerciseId, before, excludeId) {
+    const t = new Date(before);
+    const sets = (workouts || [])
+      .filter((w) => w.id !== excludeId && w.endedAt && new Date(w.startedAt) < t)
+      .flatMap((w) => (w.exercises || []).filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets || []));
+    return bestSet(type, sets);
+  }
+
+  // Her set için: önceki tüm antrenmanları VE bu antrenmandaki önceki setleri geçiyor mu?
+  // Hareket ilk kez yapılıyorsa rekor sayılmaz (kıyaslanacak geçmiş yok).
+  function recordFlags(type, sets, prior) {
+    let bar = prior;
+    return (sets || []).map((s) => {
+      if (!bar || !isWorkingSet(s)) return false;
+      const rec = compareSets(type, s, bar) > 0;
+      if (rec) bar = s;
+      return rec;
+    });
+  }
+
+  // ---------- Hareket geçmişi (detay sayfası ve grafik) ----------
+
+  function exerciseHistory(state, exerciseId) {
+    const ex = (state.exercises || {})[exerciseId] || { type: 'weighted' };
+    const type = ex.type;
+    const chronological = (state.workouts || []).filter(isFinished)
+      .sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+    const sessions = [];
+    let runningBest = null;
+    for (const w of chronological) {
+      const sets = (w.exercises || []).filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets || []);
+      const best = bestSet(type, sets);
+      if (!best) continue;
+      const isPR = !!runningBest && compareSets(type, best, runningBest) > 0;
+      if (!runningBest || compareSets(type, best, runningBest) > 0) runningBest = best;
+      sessions.push({
+        workoutId: w.id, workoutName: w.name, date: w.startedAt,
+        sets: sets.filter((s) => s.reps > 0), best, score: sessionScore(type, sets), isPR,
+      });
+    }
+    const first = sessions[0] || null;
+    const last = sessions[sessions.length - 1] || null;
+    const bestSession = sessions.reduce((m, s) => (!m || compareSets(type, s.best, m.best) > 0 ? s : m), null);
+    return {
+      type,
+      metric: metricOf(type),
+      sessions,
+      first,
+      last,
+      bestSession,
+      prCount: sessions.filter((s) => s.isPR).length,
+      changePct: first && last && first !== last && first.score
+        ? Math.round(((last.score - first.score) / first.score) * 1000) / 10 : null,
+    };
+  }
+
   // ---------- Geçen sefer ve ön doldurma ----------
 
   function byStartDesc(a, b) {
@@ -407,5 +488,6 @@
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,
     metricOf, sessionScore, compareAverages, workoutGroups, inGroup,
+    repRange, nextTarget, priorBest, recordFlags, exerciseHistory,
   };
 });
