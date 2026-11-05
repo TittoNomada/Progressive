@@ -449,3 +449,16 @@ button.prog-row:last-child { border-bottom: 0; }
 .error-text { margin-top: 8px; word-break: break-word; }
 .easy-set b.plain { color: var(--text); font-weight: 600; }
 .target-help { margin-top: 8px; }
+.mode-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.mode-opt {
+  display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; text-align: left; cursor: pointer;
+  background: var(--surface-2); border: 1px solid transparent; border-radius: 12px; color: inherit; font: inherit;
+}
+.mode-opt.on { border-color: var(--accent); }
+.mode-radio { flex: none; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; border: 2px solid var(--muted); }
+.mode-opt.on .mode-radio { border-color: var(--accent); box-shadow: inset 0 0 0 4px var(--surface-2); background: var(--accent); }
+.mode-text { display: flex; flex-direction: column; gap: 3px; }
+.rec { font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent); border-radius: 6px; padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
+.mode-example { margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line); }
+.mode-example ol { margin: 6px 0 0; padding-left: 0; list-style: none; }
+.mode-example li { padding: 3px 0; font-size: 14px; }

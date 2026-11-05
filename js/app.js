@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 13;
+  const APP_VERSION = 14;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -168,6 +168,20 @@
     const m = state.settings.targetMode;
     return m === 'top' || m === 'last1' || m === 'last2' ? m : 'top';
   }
+
+  const TARGET_MODES = [
+    { id: 'top', title: 'Üst set + düşüş setleri <span class="rec">önerilen</span>',
+      desc: 'En ağır set ısınmadan hemen sonra, dinçken. Hedef bu sette. Sonraki setler aynı ağırlıkla; tekrar aralığın altına düşecekse %5–10 hafif.',
+      example: ['<span class="muted">Isınma</span> 17,5×10', '<b>Set 1</b> 37,5×7 🎯 <span class="muted">üst set</span>',
+        '<b>Set 2</b> 37,5×6 <span class="muted">aynı ağırlık</span>', '<b>Set 3</b> 35×7 <span class="muted">6\'ya ulaşamayacaksan biraz hafif</span>'] },
+    { id: 'last1', title: 'Piramit · hedef son sette',
+      desc: 'Hafiften ağıra çıkarsın, en ağır set sonda. Hedef sadece son sette; önceki setler geçen seferki gibi.',
+      example: ['<b>Set 1</b> 32,5×9 <span class="muted">geçen seferki gibi</span>', '<b>Set 2</b> 35×8 <span class="muted">geçen seferki gibi</span>',
+        '<b>Set 3</b> 37,5×7 🎯'] },
+    { id: 'last2', title: 'Piramit · hedef son 2 sette',
+      desc: 'Hafiften ağıra çıkarsın. Hedef son iki sette; ilk set geçen seferki gibi.',
+      example: ['<b>Set 1</b> 32,5×9 <span class="muted">geçen seferki gibi</span>', '<b>Set 2</b> 35×9 🎯', '<b>Set 3</b> 37,5×7 🎯'] },
+  ];
 
   function planFor(ex, e, prevSets, isWarmup) {
     return L.setPlan({ mode: targetMode(), exercise: e, prevSets, currentSets: ex.sets, plannedSets: ex.targetSets, isWarmup });
@@ -883,14 +897,15 @@
       '<button class="primary wide" data-action="export">Yedeği dışa aktar</button>' +
       '<label class="ghost-btn file-btn">Yedekten geri yükle<input type="file" accept="application/json,.json" data-action="import" hidden></label>' +
       '</section>' +
-      '<section class="card"><p class="section-label">Hedef önerisi</p>' +
-      '<p class="small">🎯 hedef hangi sette verilsin?</p><div class="chips">' +
-      [['top', 'Üst set (ilk set)'], ['last1', 'Son set'], ['last2', 'Son 2 set']].map(([m, label]) =>
-        '<button class="chip-tab' + (targetMode() === m ? ' on' : '') + '" data-action="target-mode" data-m="' + m + '">' + label + '</button>').join('') +
-      '</div><p class="muted small target-help">' + (targetMode() === 'top'
-        ? 'Isınmadan sonra en ağır seti dinçken yap; hedef bu sette. Sonraki setler düşüş seti: aynı ağırlıkla devam, tekrar aralığın altına düşecekse ağırlığı %5–10 azalt.'
-        : 'Hafiften ağıra piramit: hedef son ' + (targetMode() === 'last1' ? 'sette' : '2 sette') + ', önceki setler geçen seferki gibi gelir.') +
-      '</p></section>' +
+      '<section class="card"><p class="section-label">Set düzeni ve hedef</p>' +
+      '<p class="small">Setlerini nasıl yapıyorsun? 🎯 hedef buna göre doğru sette çıkar. Isınma setleri her düzende ayrı sayılır.</p>' +
+      '<div class="mode-list" role="radiogroup">' + TARGET_MODES.map((m) =>
+        '<button class="mode-opt' + (targetMode() === m.id ? ' on' : '') + '" data-action="target-mode" data-m="' + m.id + '" role="radio"' +
+        ' aria-checked="' + (targetMode() === m.id) + '"><span class="mode-radio" aria-hidden="true"></span><span class="mode-text"><b>' + m.title +
+        '</b><span class="muted small">' + m.desc + '</span></span></button>').join('') + '</div>' +
+      '<div class="mode-example"><p class="muted small">Örnek · 3 set, tekrar aralığı 6–10</p><ol>' +
+      TARGET_MODES.find((m) => m.id === targetMode()).example.map((x) => '<li>' + x + '</li>').join('') + '</ol></div>' +
+      '</section>' +
       '<section class="card"><p class="section-label">Haftalık kardiyo hedefi</p>' +
       stepperPlain('goal', state.settings.weeklyCardioGoal, 'dk') + '</section>' +
       daySections +
