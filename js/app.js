@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 14;
+  const APP_VERSION = 15;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -1454,6 +1454,9 @@
       e.type = f.get('type') || e.type;
       e.repMin = rMin;
       e.repMax = rMax;
+      // Devam eden antrenmanda bu hareketin henüz kaydedilmemiş seti yeni ayarlarla yeniden hesaplansın
+      const aw = activeWorkout();
+      if (aw) aw.exercises.forEach((x, xi) => { if (x.exerciseId === id) delete ui.drafts[xi]; });
       persist();
       closeSheet();
       if (toWorkout) {
