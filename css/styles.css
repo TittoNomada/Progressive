@@ -441,3 +441,9 @@ button.prog-row:last-child { border-bottom: 0; }
 .easy-set { margin: 2px 0 10px; }
 .pr-list { margin: 6px 0 0; padding-left: 18px; }
 .pr-list li { margin: 2px 0; font-weight: 400; }
+.chart-empty {
+  margin-top: 6px; padding: 22px 16px; border: 1px dashed var(--line); border-radius: 12px; text-align: center;
+}
+.chart-empty-icon { font-size: 28px; display: block; margin-bottom: 6px; opacity: 0.8; }
+.chart-empty .small { margin-top: 4px; }
+.error-text { margin-top: 8px; word-break: break-word; }

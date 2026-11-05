@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 11;
+  const APP_VERSION = 12;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -294,7 +294,26 @@
   function render() {
     if (ui.view === 'workout' && !activeWorkout()) ui.view = 'home';
     if (ui.view === 'detail' && !state.workouts.some((w) => w.id === ui.detailId)) ui.view = 'history';
-    const html = ui.view === 'workout' ? renderWorkout()
+    let html;
+    try {
+      html = renderView();
+    } catch (err) {
+      // Bir ekran çizilemezse sessizce donmak yerine hatayı göster ve geri dönüş yolu bırak
+      console.error(err);
+      html = '<header class="top"><button class="icon-btn" data-action="go-home" aria-label="Ana sayfa">‹</button>' +
+        '<div class="center"><h2>Bu ekran açılamadı</h2></div><span class="icon-btn"></span></header>' +
+        '<section class="card"><p>Bir hata oluştu, verilerin güvende. Bu ekranın görüntüsünü Claude\'a gönder.</p>' +
+        '<p class="muted small error-text">' + esc((ui.view || '') + ': ' + (err && err.message ? err.message : String(err))) + '</p></section>' +
+        '<button class="primary wide" data-action="go-home">Ana sayfa</button>';
+    }
+    const tabs = TAB_VIEWS.includes(ui.view);
+    document.body.classList.toggle('has-tabbar', tabs);
+    $app.innerHTML = html + (tabs ? renderTabbar() : '');
+    renderSheet();
+  }
+
+  function renderView() {
+    return ui.view === 'workout' ? renderWorkout()
       : ui.view === 'summary' ? renderSummary()
       : ui.view === 'settings' ? renderSettings()
       : ui.view === 'history' ? renderHistory()
@@ -302,10 +321,6 @@
       : ui.view === 'overview' ? renderOverview()
       : ui.view === 'exercise' ? renderExercisePage()
       : renderHome();
-    const tabs = TAB_VIEWS.includes(ui.view);
-    document.body.classList.toggle('has-tabbar', tabs);
-    $app.innerHTML = html + (tabs ? renderTabbar() : '');
-    renderSheet();
   }
 
   // ---------- Alt sekmeler ----------
@@ -424,7 +439,11 @@
       (isReps ? 'Vücut ağırlığı · tekrar' : 'Tekrar aralığı ' + r.min + '–' + r.max) + '</p></div>' +
       '<button class="icon-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '" aria-label="Hareket ayarları">⚙︎</button></header>';
     if (!h.sessions.length) {
-      return header + '<p class="muted empty">Bu hareket için henüz bitmiş antrenman yok. İlk antrenmandan sonra gelişimin burada görünecek.</p>';
+      const inProgress = (activeWorkout() || { exercises: [] }).exercises.some((x) => x.exerciseId === e.id && x.sets.length);
+      return header + '<section class="card"><p class="section-label">' + (isReps ? 'En iyi setteki tekrar' : 'Güç puanı') + '</p>' +
+        chartPlaceholder('Henüz kayıt yok.', inProgress
+          ? 'Bu antrenmanı bitirince ilk kaydın burada görünür. Grafik ikinci antrenmandan sonra çizilir.'
+          : 'Bu hareketle ilk antrenmanını bitirince kaydın burada görünür. Grafik ikinci antrenmandan sonra çizilir.') + '</section>';
     }
     const best = h.bestSession;
     const tile = (big, small, sub) => '<div class="tile"><b>' + big + '</b><span>' + small + '</span>' + (sub ? '<em>' + sub + '</em>' : '') + '</div>';
@@ -445,6 +464,12 @@
       '<p class="section-label">Son antrenmanlar</p>' + recent;
   }
 
+  // Grafik çizilemediğinde (0–1 kayıt) grafiğin yerinde duran açıklama kutusu
+  function chartPlaceholder(title, text) {
+    return '<div class="chart-empty"><span class="chart-empty-icon" aria-hidden="true">📈</span>' +
+      '<p><b>' + esc(title) + '</b></p><p class="muted small">' + esc(text) + '</p></div>';
+  }
+
   // Sade çizgi grafik: her antrenmanın en iyi seti tek sayıya çevrilir (kg: güç puanı = tahmini 1RM, vücut ağırlığı: tekrar).
   // Üstte tek cümlelik özet; çizgide yalnızca rekorlar işaretli; dokunulan antrenman altta yazılır.
   function renderChart(h, isReps, unit) {
@@ -455,8 +480,10 @@
     const help = isReps ? '' : '<p class="muted small chart-help">Güç puanı, en iyi setinin ağırlığını ve tekrarını tek sayıda birleştirir. ' +
       'Çizgi yukarı gidiyorsa güçleniyorsun.</p>';
     if (pts.length < 2) {
-      return '<p class="section-label">' + name + '</p><p class="chart-head"><b>' + one(pts[0].score) + unit + '</b></p>' + help +
-        '<p class="muted small">Grafik için en az 2 antrenman gerekli.</p>';
+      return '<p class="section-label">' + name + '</p>' + chartPlaceholder(
+        'Grafik ikinci antrenmandan sonra çizilir.',
+        'Şimdilik 1 kayıt var: ' + day(pts[0].date) + ' · en iyi set ' + L.formatSet(h.type, pts[0].best) + '. ' +
+        'Bu hareketi bir kez daha yapınca gelişim çizgin burada başlar.');
     }
     const first = pts[0], last = pts[pts.length - 1];
     const diff = last.score - first.score;
