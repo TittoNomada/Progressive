@@ -447,3 +447,5 @@ button.prog-row:last-child { border-bottom: 0; }
 .chart-empty-icon { font-size: 28px; display: block; margin-bottom: 6px; opacity: 0.8; }
 .chart-empty .small { margin-top: 4px; }
 .error-text { margin-top: 8px; word-break: break-word; }
+.easy-set b.plain { color: var(--text); font-weight: 600; }
+.target-help { margin-top: 8px; }

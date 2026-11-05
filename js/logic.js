@@ -135,6 +135,45 @@
     return index >= Math.max(0, (plannedSets || 0) - n);
   }
 
+  // Bu setin rolü ve hedefi (Ayarlar → Hedef önerisi):
+  //  mode 'top'  : üst set düzeni. İlk çalışma seti = üst set; geçen seferin en iyi setine göre hedef.
+  //               Sonraki çalışma setleri düşüş seti: hedef yok, aynı ağırlıkla devam (tekrar alt sınırın
+  //               altına düşecekse ağırlık %5–10 azaltılır).
+  //  mode 'last1' / 'last2': yükselen piramit. Hedef son 1–2 sette, öncekiler hazırlık seti.
+  // Dönüş: { role: 'warmup' | 'top' | 'backoff' | 'target' | 'prep', target, ref, draft, lighter }
+  function setPlan(o) {
+    const ex = o.exercise || { type: 'weighted' };
+    const type = ex.type;
+    const prev = o.prevSets || [];
+    const cur = o.currentSets || [];
+    if (o.isWarmup) return { role: 'warmup', target: null, ref: null, draft: null };
+    if (o.mode === 'top') {
+      const working = cur.filter(isWorkingSet);
+      if (!working.length) {
+        const ref = bestSet(type, prev);
+        const target = nextTarget(ex, ref);
+        return { role: 'top', target, ref, draft: target ? { weight: target.weight, reps: target.reps } : null };
+      }
+      const top = working[0];
+      const last = working[working.length - 1];
+      // Geçen seferin aynı sıradaki çalışma seti bugünkü son setten ağır değilse onu, yoksa bugünkü son seti öner
+      // (düşüş seti hiçbir zaman bir önceki setten ağır önerilmez)
+      const p = prev.filter(isWorkingSet)[working.length];
+      const base = p && p.weight <= last.weight ? p : last;
+      const lighter = type === 'bodyweight' || type === 'assisted' ? null
+        : Math.max(0, Math.floor((top.weight * 0.925) / (ex.weightStep || 2.5)) * (ex.weightStep || 2.5));
+      return { role: 'backoff', target: null, ref: top, draft: { weight: base.weight, reps: base.reps }, lighter };
+    }
+    const n = o.mode === 'last1' ? 1 : 2;
+    const i = cur.filter(isWorkingSet).length;          // ısınmalar sayılmaz
+    const ref = prev.filter(isWorkingSet)[i] || null;
+    if (isTargetSet(i, o.plannedSets, n)) {
+      const target = nextTarget(ex, ref);
+      return { role: 'target', target, ref, draft: target ? { weight: target.weight, reps: target.reps } : null };
+    }
+    return { role: 'prep', target: null, ref: ref && !ref.isWarmup ? ref : null, draft: null };
+  }
+
   // ---------- Kişisel rekor ----------
 
   // Bu antrenmandan önceki (başlangıç zamanına göre) tüm bitmiş antrenmanlardaki en iyi set
@@ -495,6 +534,6 @@
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,
     metricOf, sessionScore, compareAverages, workoutGroups, inGroup,
-    repRange, nextTarget, isTargetSet, priorBest, recordFlags, exerciseHistory,
+    repRange, nextTarget, isTargetSet, setPlan, priorBest, recordFlags, exerciseHistory,
   };
 });

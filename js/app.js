@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 12;
+  const APP_VERSION = 13;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -137,9 +137,15 @@
     window.scrollTo(0, 0);
   }
 
+  // Setin çalışma seti sırası (ısınmalar sayılmaz): 1, 2, 3
+  function workNo(sets, si) { return sets.slice(0, si + 1).filter((x) => !x.isWarmup).length; }
+
+  // Planlanan set sayısına sadece çalışma setleri sayılır; ısınma setleri ekstradır
+  function workDone(ex) { return ex.sets.filter((s) => !s.isWarmup).length; }
+
   function focusIndex(w) {
     if (ui.focus !== null && ui.focus < w.exercises.length) return ui.focus;
-    const i = w.exercises.findIndex((e) => e.sets.length < e.targetSets);
+    const i = w.exercises.findIndex((e) => workDone(e) < e.targetSets);
     return i === -1 ? null : i;
   }
 
@@ -149,18 +155,22 @@
       const prev = prevSetsFor(ex.exerciseId, w.id).sets;
       const e = exercise(ex.exerciseId);
       const d = L.prefill(prev, ex.sets, ex.sets.length, e);
-      // Geçen seferin aynı seti biliniyorsa doğrudan bugünkü hedefle doldur (tutturursan tek dokunuş)
-      const tg = targetFor(ex, e, prev, d.isWarmup);
-      if (tg) { d.weight = tg.weight; d.reps = tg.reps; }
+      // Hedef (üst set ya da son setler) ve düşüş setleri doğrudan önerilen değerle dolar (tutturursan tek dokunuş)
+      const plan = planFor(ex, e, prev, d.isWarmup);
+      if (plan.draft) { d.weight = plan.draft.weight; d.reps = plan.draft.reps; }
       ui.drafts[exIndex] = d;
     }
     return ui.drafts[exIndex];
   }
 
-  // Bu setin hedefi: sadece son N sette (Ayarlar), ısınmada yok
-  function targetFor(ex, e, prevSets, isWarmup) {
-    if (isWarmup || !L.isTargetSet(ex.sets.length, ex.targetSets, state.settings.targetLastSets || 2)) return null;
-    return L.nextTarget(e, prevSets[ex.sets.length]);
+  // Hedef düzeni (Ayarlar → Hedef önerisi): 'top' üst set + düşüş setleri (varsayılan), 'last1' / 'last2' piramit
+  function targetMode() {
+    const m = state.settings.targetMode;
+    return m === 'top' || m === 'last1' || m === 'last2' ? m : 'top';
+  }
+
+  function planFor(ex, e, prevSets, isWarmup) {
+    return L.setPlan({ mode: targetMode(), exercise: e, prevSets, currentSets: ex.sets, plannedSets: ex.targetSets, isWarmup });
   }
 
   function confirmSet(exIndex) {
@@ -185,9 +195,9 @@
     const flags = L.recordFlags(type, ex.sets, L.priorBest(state.workouts, type, ex.exerciseId, w.startedAt, w.id));
     if (flags[flags.length - 1]) toast('🏆 Yeni rekor: ' + L.formatSet(type, ex.sets[ex.sets.length - 1]));
     // Hareket bitti ise sıradaki bitmemiş harekete geç
-    if (ex.sets.length >= ex.targetSets) {
-      const next = w.exercises.findIndex((e, i) => i > exIndex && e.sets.length < e.targetSets);
-      const any = next !== -1 ? next : w.exercises.findIndex((e) => e.sets.length < e.targetSets);
+    if (workDone(ex) >= ex.targetSets) {
+      const next = w.exercises.findIndex((e, i) => i > exIndex && workDone(e) < e.targetSets);
+      const any = next !== -1 ? next : w.exercises.findIndex((e) => workDone(e) < e.targetSets);
       ui.focus = any === -1 ? null : any;
       render();
       if (ui.focus !== null) scrollToCard(ui.focus);
@@ -244,7 +254,7 @@
       if (del) discardWorkout(true);
       return;
     }
-    const left = w.exercises.reduce((t, e) => t + Math.max(0, e.targetSets - e.sets.length), 0);
+    const left = w.exercises.reduce((t, e) => t + Math.max(0, e.targetSets - workDone(e)), 0);
     const ok = await ask({
       title: 'Antrenmanı bitir?',
       message: left ? left + ' planlı set yapılmadı, kayda geçmeyecek.' : 'Tüm planlı setleri tamamladın.',
@@ -402,7 +412,7 @@
       const best = L.bestSet(e.type, ex.sets);
       const rows = ex.sets.map((s, si) =>
         '<button class="set-row done" data-action="edit-set" data-w="' + esc(w.id) + '" data-ex="' + i + '" data-si="' + si + '">' +
-        '<span class="set-no">' + (s.isWarmup ? 'Is' : si + 1) + '</span>' +
+        '<span class="set-no">' + (s.isWarmup ? 'Is' : workNo(ex.sets, si)) + '</span>' +
         '<span class="set-val' + (s.isWarmup ? ' warm' : '') + '">' + esc(L.formatSet(e.type, s)) + '</span>' +
         (s === best ? '<span class="best-tag">en iyi</span>' : '') + (records[i][si] ? PR_BADGE : '') +
         '<span class="edit-hint">✎</span></button>').join('');
@@ -719,7 +729,7 @@
   function renderExerciseCard(w, ex, i, focused) {
     const e = exercise(ex.exerciseId);
     const prev = prevSetsFor(ex.exerciseId, w.id);
-    const done = ex.sets.length >= ex.targetSets;
+    const done = workDone(ex) >= ex.targetSets;
     const prevLine = prev.sets.length
       ? '<p class="prev">Geçen sefer <span class="muted">(' + fmtDate(prev.workout.startedAt) + ')</span>: ' +
         prev.sets.map((s) => '<span class="' + (s.isWarmup ? 'warm' : '') + '">' + esc(L.formatSet(e.type, s)) + '</span>').join(' · ') + '</p>'
@@ -727,12 +737,13 @@
 
 
     const flags = L.recordFlags(e.type, ex.sets, L.priorBest(state.workouts, e.type, ex.exerciseId, w.startedAt, w.id));
+    const prevWork = prev.sets.filter((x) => !x.isWarmup);
     const doneSets = ex.sets.map((s, si) => {
-      const p = prev.sets[si];
+      const p = s.isWarmup ? null : prevWork[workNo(ex.sets, si) - 1];
       let t = '';
       if (p && !s.isWarmup && !p.isWarmup) t = trendIcon(L.trend(e.type, p, s));
       return '<button class="set-row done" data-action="edit-set" data-ex="' + i + '" data-si="' + si + '">' +
-        '<span class="set-no">' + (s.isWarmup ? 'Is' : si + 1) + '</span>' +
+        '<span class="set-no">' + (s.isWarmup ? 'Is' : workNo(ex.sets, si)) + '</span>' +
         '<span class="set-val">' + esc(L.formatSet(e.type, s)) + '</span>' + t + (flags[si] ? PR_BADGE : '') +
         '<span class="check">✓</span></button>';
     }).join('');
@@ -740,21 +751,27 @@
     let active = '';
     if (focused && !done) {
       const d = draftFor(w, i);
-      const n = ex.sets.length + 1;
-      const tg = targetFor(ex, e, prev.sets, d.isWarmup);
-      const pSame = prev.sets[ex.sets.length];
+      const n = workDone(ex) + 1;
+      const plan = planFor(ex, e, prev.sets, d.isWarmup);
+      const tg = plan.target;
+      const r = L.repRange(e);
       const onTarget = tg && d.weight === tg.weight && d.reps === tg.reps;
       const target = tg
         ? '<button class="target' + (onTarget ? ' on' : '') + '" data-action="apply-target" data-ex="' + i + '" data-tw="' + tg.weight +
-          '" data-tr="' + tg.reps + '">🎯 Hedef: <b>' + esc(L.formatSet(e.type, tg)) + '</b>' +
+          '" data-tr="' + tg.reps + '">🎯 ' + (plan.role === 'top' ? 'Üst set hedefi' : 'Hedef') + ': <b>' + esc(L.formatSet(e.type, tg)) + '</b>' +
           '<span class="muted small">' + (tg.kind === 'weight' ? ' · ağırlığı artır' : ' · +1 tekrar') +
           (onTarget ? '' : ' · uygula') + '</span></button>'
-        : (!d.isWarmup && pSame && !pSame.isWarmup
-          ? '<p class="muted small easy-set">Hazırlık seti · geçen seferki gibi (' + esc(L.formatSet(e.type, pSame)) + '). Hedef son ' +
-            (state.settings.targetLastSets === 1 ? 'sette' : '2 sette') + '.</p>'
-          : '');
+        : plan.role === 'backoff'
+          ? '<p class="muted small easy-set"><b class="plain">Düşüş seti</b> · ' +
+            (plan.lighter !== null && plan.lighter !== undefined
+              ? 'tekrar ' + r.min + '–' + r.max + ' arasında kalsın; ' + r.min + ' tekrara ulaşamayacaksan ağırlığı azalt (üst setten %5–10 hafif ≈ ' + esc(L.fmtNum(plan.lighter)) + ' kg).'
+              : 'aynı şekilde devam et, tekrarın düşmesi normal.') + '</p>'
+          : plan.role === 'prep' && plan.ref
+            ? '<p class="muted small easy-set">Hazırlık seti · geçen seferki gibi (' + esc(L.formatSet(e.type, plan.ref)) + '). Hedef son ' +
+              (targetMode() === 'last1' ? 'sette' : '2 sette') + '.</p>'
+            : '';
       active = '<div class="active-set">' +
-        '<div class="active-head"><span>Set ' + n + (ex.targetSets ? ' / ' + ex.targetSets : '') + '</span>' +
+        '<div class="active-head"><span>' + (d.isWarmup ? 'Isınma seti' : 'Set ' + n + (ex.targetSets ? ' / ' + ex.targetSets : '')) + '</span>' +
         '<button class="chip' + (d.isWarmup ? ' on' : '') + '" data-action="toggle-warmup" data-ex="' + i + '">Isınma</button></div>' +
         target +
         '<div class="steppers">' +
@@ -764,7 +781,7 @@
         '<button class="primary wide confirm" data-action="confirm-set" data-ex="' + i + '">✓ Seti kaydet</button></div>';
     }
 
-    const remaining = Math.max(0, ex.targetSets - ex.sets.length - (focused && !done ? 1 : 0));
+    const remaining = Math.max(0, ex.targetSets - workDone(ex) - (focused && !done && !(ui.drafts[i] && ui.drafts[i].isWarmup) ? 1 : 0));
     const rest = remaining
       ? '<p class="muted small rest">' + (focused ? '+' + remaining + ' set daha' : remaining + ' set planlı · başlamak için dokun') + '</p>' : '';
     const addSet = done
@@ -867,10 +884,13 @@
       '<label class="ghost-btn file-btn">Yedekten geri yükle<input type="file" accept="application/json,.json" data-action="import" hidden></label>' +
       '</section>' +
       '<section class="card"><p class="section-label">Hedef önerisi</p>' +
-      '<p class="small">🎯 hedef hangi setlerde verilsin? Önceki setler geçen seferki gibi gelir.</p><div class="chips">' +
-      [[1, 'Son set'], [2, 'Son 2 set']].map(([n, label]) =>
-        '<button class="chip-tab' + ((state.settings.targetLastSets || 2) === n ? ' on' : '') + '" data-action="target-last" data-n="' + n + '">' + label + '</button>').join('') +
-      '</div></section>' +
+      '<p class="small">🎯 hedef hangi sette verilsin?</p><div class="chips">' +
+      [['top', 'Üst set (ilk set)'], ['last1', 'Son set'], ['last2', 'Son 2 set']].map(([m, label]) =>
+        '<button class="chip-tab' + (targetMode() === m ? ' on' : '') + '" data-action="target-mode" data-m="' + m + '">' + label + '</button>').join('') +
+      '</div><p class="muted small target-help">' + (targetMode() === 'top'
+        ? 'Isınmadan sonra en ağır seti dinçken yap; hedef bu sette. Sonraki setler düşüş seti: aynı ağırlıkla devam, tekrar aralığın altına düşecekse ağırlığı %5–10 azalt.'
+        : 'Hafiften ağıra piramit: hedef son ' + (targetMode() === 'last1' ? 'sette' : '2 sette') + ', önceki setler geçen seferki gibi gelir.') +
+      '</p></section>' +
       '<section class="card"><p class="section-label">Haftalık kardiyo hedefi</p>' +
       stepperPlain('goal', state.settings.weeklyCardioGoal, 'dk') + '</section>' +
       daySections +
@@ -1057,7 +1077,7 @@
       '<button class="row-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '">Ayarlar (ad, ağırlık adımı, tekrar aralığı)</button>' +
       (s.ex > 0 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="-1">↑ Yukarı taşı</button>' : '') +
       (s.ex < w.exercises.length - 1 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="1">↓ Aşağı taşı</button>' : '') +
-      (ex.targetSets > ex.sets.length && ex.targetSets > 1 ? '<button class="row-btn" data-action="remove-planned" data-ex="' + s.ex + '">Planlanan seti azalt (−1)</button>' : '') +
+      (ex.targetSets > workDone(ex) && ex.targetSets > 1 ? '<button class="row-btn" data-action="remove-planned" data-ex="' + s.ex + '">Planlanan seti azalt (−1)</button>' : '') +
       '<button class="row-btn danger" data-action="remove-exercise" data-ex="' + s.ex + '">Bu antrenmandan çıkar</button>' +
       '<div class="sheet-actions"><button class="ghost-btn" data-action="close-sheet">Kapat</button></div>';
   }
@@ -1098,13 +1118,29 @@
       render();
     },
     'toggle-warmup': (el) => {
-      const d = draftFor(activeWorkout(), Number(el.dataset.ex));
-      d.isWarmup = !d.isWarmup;
+      const w = activeWorkout();
+      const i = Number(el.dataset.ex);
+      const ex = w.exercises[i];
+      const e = exercise(ex.exerciseId);
+      const d = draftFor(w, i);
+      if (!d.isWarmup) {
+        // Isınma: hedefin yaklaşık yarısı, 10 tekrar (vücut ağırlığında ek yük yok)
+        const step = e.weightStep || 2.5;
+        d.isWarmup = true;
+        if (e.type === 'weighted') { d.weight = Math.floor((d.weight * 0.5) / step) * step; d.reps = 10; }
+      } else {
+        // Çalışma setine dön: hedef / öneri yeniden hesaplansın
+        const prev = prevSetsFor(ex.exerciseId, w.id).sets;
+        const plan = planFor(ex, e, prev, false);
+        d.isWarmup = false;
+        const base = plan.draft || L.prefill(prev, ex.sets, ex.sets.length, e);
+        d.weight = base.weight; d.reps = base.reps;
+      }
       render();
     },
     'confirm-set': (el) => confirmSet(Number(el.dataset.ex)),
-    'target-last': (el) => {
-      state.settings.targetLastSets = Number(el.dataset.n);
+    'target-mode': (el) => {
+      state.settings.targetMode = el.dataset.m;
       ui.drafts = {};
       persist();
       render();
@@ -1134,7 +1170,7 @@
       const w = activeWorkout();
       const i = Number(el.dataset.ex);
       const ex = w.exercises[i];
-      ex.targetSets = Math.max(ex.targetSets, ex.sets.length) + 1;
+      ex.targetSets = Math.max(ex.targetSets, workDone(ex)) + 1;
       snapshotPlan(w);
       ui.focus = i;
       persist();
@@ -1263,7 +1299,7 @@
     'remove-planned': (el) => {
       const w = activeWorkout();
       const ex = w.exercises[Number(el.dataset.ex)];
-      ex.targetSets = Math.max(ex.sets.length, ex.targetSets - 1, 1);
+      ex.targetSets = Math.max(workDone(ex), ex.targetSets - 1, 1);
       snapshotPlan(w);
       persist();
       closeSheet();
