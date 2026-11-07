@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 24;
+  const APP_VERSION = 25;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -713,9 +713,6 @@
 
   // ---------- Ana ekrana ekleme rehberi (v21) ----------
 
-  let installPrompt = null;   // Android Chrome: tarayıcının "yükle" penceresi (beforeinstallprompt)
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; if (!ui.sheet) render(); });
-
   function installInfo() {
     const ua = navigator.userAgent || '';
     const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
@@ -737,8 +734,7 @@
       step(3, 'Listeyi kaydır, <b>Ana Ekrana Ekle</b>\'yi seç.') +
       step(4, '<b>Web Uygulaması Olarak Aç</b> açık kalsın, <b>Ekle</b>\'ye dokun.') +
       step(5, '<b>Bu Safari sayfasını kapat</b>, uygulamayı ana ekrandaki <b>Progressive</b> simgesinden aç. Kuruluma orada devam et.') + '</ol>';
-    const androidSteps = (installPrompt ? '<button class="primary wide" data-action="install-app">📲 Uygulamayı yükle</button>' : '') +
-      '<ol class="ins-steps">' +
+    const androidSteps = '<ol class="ins-steps">' +
       step(1, 'Bu sayfayı <b>Chrome</b>\'da aç.') +
       step(2, 'Sağ üstteki <b>⋮</b> menüsüne dokun.') +
       step(3, '<b>Ana ekrana ekle</b> ya da <b>Uygulamayı yükle</b>\'yi seç, onayla.') +
@@ -829,13 +825,11 @@
         '<h2>Telefonuna uygulama gibi ekle</h2>' +
         '<p class="muted">' + (phone ? 'Bir dakikanı alır; kayıtlarının güvende kalması için önemli.' : 'Bilgisayardasın. Telefonda kullanacaksan bu adımları telefonunda yap.') + '</p>' +
         installBox(false) +
-        (info.ios
-          ? '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
-            '<button class="ghost-btn" data-action="wl-next">Eklemeden devam et</button></div>' +
-            '<p class="muted small center-text">Eklemeden devam edersen kayıtların Safari\'de kalır ve silinebilir.</p>'
-          : '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
-            '<button class="primary" data-action="wl-next">' + (info.android ? 'Şimdilik burada devam et' : 'Devam') + '</button></div>' +
-            '') +
+        // Her telefonda aynı: zaten eklediyse atlar, eklemeden de devam edebilir
+        '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
+        '<button class="primary" data-action="wl-next">' + (phone ? 'Zaten ekledim' : 'Devam') + '</button></div>' +
+        (phone ? '<button class="text-btn" data-action="wl-next">Eklemeden devam et</button>' +
+          (info.ios ? '<p class="muted small center-text">Eklemeden devam edersen kayıtların Safari\'de kalır ve silinebilir.</p>' : '') : '') +
         '</div>';
     }
     if (step === 'program') {
@@ -1885,13 +1879,6 @@
       render();
     },
     'kcal-chart': () => openSheet({ type: 'kcal', sel: null }),
-    'install-app': async () => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      try { await installPrompt.userChoice; } catch (e) { /* kullanıcı kapattı */ }
-      installPrompt = null;
-      render();
-    },
     'wl-next': () => { ui.welcomeStep = Math.min(welcomeSteps().length, ui.welcomeStep + 1); render(); window.scrollTo(0, 0); },
     'wl-back': () => { ui.welcomeStep = Math.max(1, ui.welcomeStep - 1); render(); window.scrollTo(0, 0); },
     'wl-program': (el) => { ui.welcomeProgram = el.dataset.id; render(); },
