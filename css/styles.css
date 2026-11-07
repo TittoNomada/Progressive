@@ -536,3 +536,4 @@ button.prog-row:last-child { border-bottom: 0; }
 .kcal-chart .kb-sel { fill: var(--surface-2); }
 .kcal-read { min-height: 1.5em; margin-top: 6px; }
 .kcal-note { margin-top: 6px; }
+.dialog-actions button { padding: 0 8px; white-space: nowrap; font-size: 15px; }

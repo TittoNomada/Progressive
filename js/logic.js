@@ -681,6 +681,7 @@
       sets: workingSetCount(w),
       cardioMinutes: cardioMinutes(w),
       calories: cardioTotals(w.cardio).calories,
+      caloriesMissing: cardioTotals(w.cardio).caloriesMissing,
       durationMin: w.endedAt ? Math.max(0, Math.round((new Date(w.endedAt) - new Date(w.startedAt)) / 60000)) : null,
     };
   }

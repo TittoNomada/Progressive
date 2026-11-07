@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 17;
+  const APP_VERSION = 18;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -372,7 +372,7 @@
     if (!changes.length) {
       const ok = await ask({ title: 'Hiçbir şey değiştirmedin',
         message: intent === 'save' ? 'Kaydedilecek bir değişiklik yok. Düzenlemeden çıkılsın mı?' : 'Düzenlemeden çıkmak istiyor musun?',
-        ok: 'Çık', cancel: 'Düzenlemeye dön' });
+        ok: 'Çık', cancel: 'Düzenle' });
       if (ok) { closeEditing(w, 'discard'); toast('Değişiklik yapılmadı'); }
       return;
     }
@@ -380,10 +380,10 @@
     const r = intent === 'save'
       ? await ask({ title: n + ' değişiklik kaydedilecek', message: L.dateTr(w.startedAt, { noYear: true }) + ' ' + w.name + ' kaydına:', list: changes,
         ok: 'Kaydet', cancel: 'Geri dön' })
-      : await ask({ title: 'Kaydedilmemiş ' + n + ' değişiklik', message: 'Çıkmadan önce ne yapalım?', list: changes,
-        ok: 'Kaydet ve çık', alt: 'Değişiklikleri at', cancel: 'Düzenlemeye dön' });
-    if (r === true) { closeEditing(w, 'save'); toast(n + ' değişiklik kaydedildi'); }
-    else if (r === 'alt') { closeEditing(w, 'discard'); toast('Değişiklikler atıldı'); }
+      : await ask({ title: 'Kaydedilmemiş ' + n + ' değişiklik', message: 'Çıkarsan bu değişiklikler silinir. Kaydetmek için Kaydet butonunu kullan.', list: changes,
+        ok: 'Değişiklikleri sil', danger: true, cancel: 'Düzenle' });
+    if (r === true && intent === 'save') { closeEditing(w, 'save'); toast(n + ' değişiklik kaydedildi'); }
+    else if (r === true) { closeEditing(w, 'discard'); toast('Değişiklikler silindi'); }
   }
 
   // Antrenmandaki hareket listesi değiştiğinde güncel planı sakla (şablon önerisi için).
@@ -473,7 +473,8 @@
     const st = L.workoutStats(w);
     return [
       st.exercises ? st.exercises + ' hareket · ' + st.sets + ' set' : '',
-      st.cardioMinutes ? st.cardioMinutes + ' dk kardiyo' + (st.calories ? ' · ' + L.fmtNum(st.calories) + ' kcal' : '') : '',
+      st.cardioMinutes ? st.cardioMinutes + ' dk kardiyo' + (st.calories ? ' · ' + L.fmtNum(st.calories) + ' kcal' : '') +
+        (st.caloriesMissing ? ' · ' + st.caloriesMissing + ' kayıtta kalori girilmedi' : '') : '',
       st.durationMin ? st.durationMin + ' dk' : '',
     ].filter(Boolean).join(' · ');
   }
