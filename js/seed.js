@@ -37,6 +37,19 @@
       primaryMuscles: ['abs'], secondaryMuscles: [] },
     { id: 'dumbbell-curl', repMin: 8, repMax: 12, name: 'Dumbbell curl', type: 'weighted', weightStep: 2.5,
       primaryMuscles: ['biceps'], secondaryMuscles: ['forearms'] },
+    // Bacak ve diğer programlar için (v19)
+    { id: 'leg-press', repMin: 8, repMax: 12, name: 'Leg press', type: 'weighted', weightStep: 5,
+      primaryMuscles: ['quads', 'glutes'], secondaryMuscles: ['hamstrings'] },
+    { id: 'romanian-deadlift', repMin: 6, repMax: 10, name: 'Romanian deadlift', type: 'weighted', weightStep: 2.5,
+      primaryMuscles: ['hamstrings', 'glutes'], secondaryMuscles: ['lower-back'] },
+    { id: 'leg-extension', repMin: 10, repMax: 15, name: 'Leg extension', type: 'weighted', weightStep: 5,
+      primaryMuscles: ['quads'], secondaryMuscles: [] },
+    { id: 'leg-curl', repMin: 10, repMax: 15, name: 'Leg curl', type: 'weighted', weightStep: 5,
+      primaryMuscles: ['hamstrings'], secondaryMuscles: [] },
+    { id: 'calf-raise', repMin: 10, repMax: 15, name: 'Calf raise', type: 'weighted', weightStep: 5,
+      primaryMuscles: ['calves'], secondaryMuscles: [] },
+    { id: 'plank', name: 'Plank', type: 'timed', weightStep: 2.5, timeStep: 5, repMin: 6, repMax: 12,
+      primaryMuscles: ['abs'], secondaryMuscles: [] },
   ];
 
   const TEMPLATES = [
@@ -68,6 +81,26 @@
     setting: { label: 'Ayar', unit: '', step: 1, decimal: true, start: 1 },
   };
 
+  // İlk kurulumda seçilen hazır programlar (v19). Her program kendi günlerini (güç şablonları) ekler;
+  // "Sadece kardiyo" her kullanıcıda vardır. Hareketler EXERCISES katalogundan, 3'er set.
+  const T = (id, name, ids) => ({ id, name, kind: 'strength', items: ids.map((exerciseId) => ({ exerciseId, targetSets: 3 })) });
+  const DAY_PUSH = ['chest-press', 'fly', 'dips', 'shoulder-press', 'lateral-cable-raise'];
+  const DAY_PULL = ['pull-up', 'lat-pulldown', 'seated-row', 'face-pull', 'reverse-crunch', 'dumbbell-curl'];
+  const DAY_LEGS = ['leg-press', 'romanian-deadlift', 'leg-extension', 'leg-curl', 'calf-raise', 'plank'];
+  const PROGRAMS = [
+    { id: 'push-pull', name: 'Push / Pull', desc: '2 gün: itme (göğüs, omuz, arka kol) ve çekme (sırt, ön kol)',
+      templates: [T('push', 'Push', DAY_PUSH), T('pull', 'Pull', DAY_PULL)] },
+    { id: 'ppl', name: 'Push / Pull / Legs', desc: '3 gün: itme, çekme ve bacak',
+      templates: [T('push', 'Push', DAY_PUSH), T('pull', 'Pull', DAY_PULL), T('legs', 'Legs', DAY_LEGS)] },
+    { id: 'upper-lower', name: 'Üst / Alt vücut', desc: '2 gün: üst vücut ve bacak',
+      templates: [
+        T('upper', 'Üst vücut', ['chest-press', 'lat-pulldown', 'shoulder-press', 'seated-row', 'lateral-cable-raise', 'dumbbell-curl']),
+        T('lower', 'Alt vücut', ['leg-press', 'romanian-deadlift', 'leg-curl', 'leg-extension', 'calf-raise', 'plank'])] },
+    { id: 'full-body', name: 'Tüm vücut', desc: '1 gün: her antrenmanda tüm vücut, haftada 2–3 kez',
+      templates: [T('full', 'Tüm vücut', ['leg-press', 'chest-press', 'lat-pulldown', 'shoulder-press', 'seated-row', 'leg-curl', 'plank'])] },
+    { id: 'custom', name: 'Kendim oluşturacağım', desc: 'Boş başla; günlerini ve hareketlerini Ayarlar\'dan ekle', templates: [] },
+  ];
+
   const CARDIO_TYPES = [
     { id: 'treadmill', name: 'Koşu bandı', fields: ['speed', 'incline'] },
     { id: 'bike', name: 'Bisiklet', fields: ['level'] },
@@ -79,6 +112,7 @@
   ];
 
   // 1 Kasım 2026 Push antrenmanı (kullanıcının ilk kaydı). Dips 2. set bilinmiyor.
+  // v19'dan beri yeni kullanıcılara yüklenmez; yalnızca testlerde (Store.initialState({ withSeed: true })).
   function seedWorkouts() {
     const start = new Date(2026, 10, 1, 18, 0, 0); // ay 0'dan başlar: 10 = Kasım
     const end = new Date(2026, 10, 1, 19, 15, 0);
@@ -115,5 +149,5 @@
     }];
   }
 
-  return { EXERCISES, TEMPLATES, CARDIO_TYPES, CARDIO_FIELDS, seedWorkouts };
+  return { EXERCISES, TEMPLATES, PROGRAMS, CARDIO_TYPES, CARDIO_FIELDS, seedWorkouts };
 });

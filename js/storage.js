@@ -11,25 +11,57 @@
   'use strict';
 
   const KEY = 'progressive.data';
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
 
   function uid(prefix) {
     return (prefix || 'id') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   }
 
-  function initialState() {
-    const exercises = {};
-    for (const e of Seed.EXERCISES) {
-      exercises[e.id] = Object.assign({ machineSetting: '', archived: false, isCustom: false }, e);
-    }
-    return {
+  function catalogExercise(id) {
+    const e = Seed.EXERCISES.find((x) => x.id === id);
+    return e ? Object.assign({ machineSetting: '', archived: false, isCustom: false }, JSON.parse(JSON.stringify(e))) : null;
+  }
+
+  // Yeni kullanıcı (v19): boş başlar, ilk kurulum ekranında program seçer (onboarded: false).
+  // withSeed: eski başlangıç (Push/Pull + 1 Kasım kaydı), yalnızca testler için.
+  function initialState(opts) {
+    const o = opts || {};
+    const state = {
       schemaVersion: SCHEMA_VERSION,
-      exercises,
-      templates: JSON.parse(JSON.stringify(Seed.TEMPLATES)),
-      workouts: Seed.seedWorkouts(),
+      onboarded: false,
+      exercises: {},
+      templates: [JSON.parse(JSON.stringify(Seed.TEMPLATES.find((t) => t.kind === 'cardio')))],
+      workouts: [],
       activeWorkoutId: null,
       settings: { weeklyCardioGoal: 150, lastBackupAt: null },
     };
+    if (o.withSeed) {
+      for (const e of Seed.EXERCISES) state.exercises[e.id] = catalogExercise(e.id);
+      state.templates = JSON.parse(JSON.stringify(Seed.TEMPLATES));
+      state.workouts = Seed.seedWorkouts();
+      state.onboarded = true;
+    }
+    return state;
+  }
+
+  // İlk kurulum: seçilen programın günlerini ve hareketlerini ekler (var olan günlere dokunmaz).
+  function applyProgram(state, programId) {
+    const program = Seed.PROGRAMS.find((p) => p.id === programId);
+    if (!program) throw new Error('Program bulunamadı: ' + programId);
+    for (const t of program.templates) {
+      for (const it of t.items) {
+        if (!state.exercises[it.exerciseId]) state.exercises[it.exerciseId] = catalogExercise(it.exerciseId);
+      }
+      let id = t.id;
+      while (state.templates.some((x) => x.id === id)) id = t.id + '-' + uid('t').slice(-4);
+      const copy = JSON.parse(JSON.stringify(t));
+      copy.id = id;
+      // Güç günleri kardiyodan önce
+      const cardioAt = state.templates.findIndex((x) => x.kind === 'cardio');
+      if (cardioAt === -1) state.templates.push(copy); else state.templates.splice(cardioAt, 0, copy);
+    }
+    state.onboarded = true;
+    return state;
   }
 
   // Eski şema sürümlerinden yükseltme burada yapılacak.
@@ -69,6 +101,11 @@
         }
       }
       state.schemaVersion = 3;
+    }
+    // v4: ilk kurulum ekranı. Var olan veri kurulmuş sayılır (kullanıcı hiçbir şey görmez).
+    if (state.schemaVersion < 4) {
+      if (state.onboarded === undefined) state.onboarded = true;
+      state.schemaVersion = 4;
     }
     return state;
   }
@@ -153,5 +190,5 @@
     };
   }
 
-  return { KEY, SCHEMA_VERSION, uid, initialState, migrate, load, save, exportJson, parseBackup, stableStringify, backupInfo };
+  return { KEY, SCHEMA_VERSION, uid, initialState, applyProgram, catalogExercise, migrate, load, save, exportJson, parseBackup, stableStringify, backupInfo };
 });

@@ -537,3 +537,23 @@ button.prog-row:last-child { border-bottom: 0; }
 .kcal-read { min-height: 1.5em; margin-top: 6px; }
 .kcal-note { margin-top: 6px; }
 .dialog-actions button { padding: 0 8px; white-space: nowrap; font-size: 15px; }
+
+/* ---------- v19: ilk kurulum ---------- */
+.welcome { max-width: 520px; margin: 0 auto; padding: 24px 0 40px; }
+.welcome h1 { font-size: 38px; margin: 18px 0 6px; }
+.welcome h2 { margin: 18px 0 6px; }
+.wl-lead { font-size: 17px; margin: 0 0 18px; }
+.wl-dots { display: flex; gap: 6px; }
+.wl-dots i { width: 22px; height: 4px; border-radius: 2px; background: var(--line); }
+.wl-dots i.on { background: var(--accent); } .wl-dots i.done { background: var(--muted); }
+.wl-points { list-style: none; padding: 0; margin: 0 0 18px; display: flex; flex-direction: column; gap: 12px; }
+.wl-points li { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.wl-points li > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.wl-ic { flex: none; width: 28px; text-align: center; font-size: 18px; }
+.wl-note { margin: 4px 0 16px; }
+.wl-restore { display: block; text-align: center; margin-top: 10px; cursor: pointer; }
+.wl-days { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; color: var(--muted); }
+.wl-days b { color: var(--text); }
+.wl-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 16px; }
+.welcome .text-btn { display: block; margin: 10px auto 0; }
+.big-card.add-day { border: 1px dashed var(--line); background: transparent; }

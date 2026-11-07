@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 18;
+  const APP_VERSION = 19;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -26,6 +26,8 @@
     drafts: {},         // { [exIndex]: { weight, reps, isWarmup } } henüz kaydedilmemiş set
     sheet: null,        // açık alt panel
     summaryWorkoutId: null,
+    welcomeStep: 1,     // ilk kurulum adımı (1 tanıtım, 2 program, 3 profil)
+    welcomeProgram: 'push-pull',
     sw: null,           // kronometre { ex, workoutId, startedAt }
     exerciseId: null,   // hareket sayfası
     exBack: 'home',     // hareket sayfasından dönülecek ekran
@@ -412,6 +414,9 @@
   const TAB_VIEWS = ['home', 'history', 'overview'];
 
   function render() {
+    // İlk açılış (v19): kurulum bitmeden başka ekran yok
+    if (!state.onboarded) ui.view = 'welcome';
+    else if (ui.view === 'welcome') ui.view = 'home';
     if (ui.view === 'workout' && !activeWorkout()) ui.view = 'home';
     if (ui.view === 'detail' && !state.workouts.some((w) => w.id === ui.detailId)) ui.view = 'history';
     let html;
@@ -433,7 +438,8 @@
   }
 
   function renderView() {
-    return ui.view === 'workout' ? renderWorkout()
+    return ui.view === 'welcome' ? renderWelcome()
+      : ui.view === 'workout' ? renderWorkout()
       : ui.view === 'summary' ? renderSummary()
       : ui.view === 'settings' ? renderSettings()
       : ui.view === 'history' ? renderHistory()
@@ -705,6 +711,68 @@
     return est.source === 'history' ? 'bu makinedeki benzer ' + est.basedOn + ' kaydına göre' : 'genel formülle (kilona göre)';
   }
 
+  // ---------- İlk kurulum (v19) ----------
+  // Yeni kullanıcı: tanıtım → program seçimi → isteğe bağlı profil. Kurulum bitince ana ekran.
+
+  function renderWelcome() {
+    const step = ui.welcomeStep;
+    const dots = '<div class="wl-dots" aria-label="Adım ' + step + ' / 3">' + [1, 2, 3].map((n) =>
+      '<i class="' + (n === step ? 'on' : n < step ? 'done' : '') + '"></i>').join('') + '</div>';
+    if (step === 1) {
+      const point = (icon, title, text) => '<li><span class="wl-ic" aria-hidden="true">' + icon + '</span><span><b>' + title + '</b>' +
+        '<span class="muted small">' + text + '</span></span></li>';
+      return '<div class="welcome">' + dots +
+        '<h1>Progressive</h1><p class="wl-lead">Ağırlıklarını ve kardiyonu kaydet, her antrenmanda biraz daha ileri git.</p>' +
+        '<ul class="wl-points">' +
+        point('✓', 'Hızlı kayıt', 'Her set 1–3 dokunuşla. Geçen seferki değerler hazır gelir.') +
+        point('🎯', 'Bugünkü hedef', 'Geçen seferine göre bu sefer ne yapman gerektiğini önerir.') +
+        point('📈', 'İlerleme ve rekorlar', 'Hareket hareket grafik, kişisel rekorlar, haftalık ve aylık özet.') +
+        point('🔥', 'Kardiyo ve kalori', 'Makine ayarları, mesafe, kalori; ağırlık antrenmanının tahmini kalorisi.') +
+        '</ul>' +
+        '<p class="muted small wl-note">Verilerin bu telefonda saklanır. Ayarlar → Yedek al ile ara ara yedekle.</p>' +
+        '<button class="primary wide" data-action="wl-next">Başla</button>' +
+        '<label class="text-btn file-btn wl-restore">Yedeğim var, geri yükle<input type="file" accept="application/json,.json" data-action="import" hidden></label>' +
+        '<p class="muted small center-text">sürüm ' + APP_VERSION + '</p></div>';
+    }
+    if (step === 2) {
+      const cards = Seed.PROGRAMS.map((p) => {
+        const on = ui.welcomeProgram === p.id;
+        const days = p.templates.map((t) => '<span class="wl-day"><b>' + esc(t.name) + '</b> ' +
+          esc(t.items.map((it) => (Store.catalogExercise(it.exerciseId) || { name: it.exerciseId }).name).join(', ')) + '</span>').join('');
+        return '<button class="mode-opt wl-prog' + (on ? ' on' : '') + '" data-action="wl-program" data-id="' + p.id + '" role="radio" aria-checked="' + on + '">' +
+          '<span class="mode-radio" aria-hidden="true"></span><span class="mode-text"><b>' + esc(p.name) + '</b>' +
+          '<span class="muted small">' + esc(p.desc) + '</span>' + (on && days ? '<span class="wl-days small">' + days + '</span>' : '') + '</span></button>';
+      }).join('');
+      return '<div class="welcome">' + dots +
+        '<h2>Nasıl çalışıyorsun?</h2><p class="muted">Bir program seç; günlerini ve hareketlerini sonra Ayarlar\'dan istediğin gibi değiştirebilirsin.</p>' +
+        '<div class="mode-list" role="radiogroup">' + cards + '</div>' +
+        '<p class="muted small wl-note">Her programda ayrıca "Sadece kardiyo" günü var.</p>' +
+        '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
+        '<button class="primary" data-action="wl-next">Devam</button></div></div>';
+    }
+    const p = state.settings.profile || {};
+    return '<div class="welcome">' + dots +
+      '<h2>Biraz seni tanıyalım</h2><p class="muted">İsteğe bağlı. Kalori tahminini daha isabetli yapar; kilo, antrenman başında sorulur.</p>' +
+      '<form data-form="welcome-profile">' +
+      '<div class="two-col"><label class="field">Boy (cm)<input name="heightCm" inputmode="numeric" value="' + (p.heightCm || '') + '" placeholder="ör. 180"></label>' +
+      '<label class="field">Yaş<input name="age" inputmode="numeric" value="' + (p.age || '') + '" placeholder="ör. 28"></label></div>' +
+      '<div class="field">Cinsiyet<div class="chips">' + [['m', 'Erkek'], ['f', 'Kadın']].map(([v, n]) =>
+        '<label class="chip-radio"><input type="radio" name="sex" value="' + v + '"' + (p.sex === v ? ' checked' : '') + '><span>' + n + '</span></label>').join('') + '</div></div>' +
+      '<div class="wl-actions"><button type="button" class="ghost-btn" data-action="wl-back">Geri</button>' +
+      '<button type="submit" class="primary">Bitir</button></div>' +
+      '<button type="button" class="text-btn" data-action="wl-finish">Şimdilik atla</button></form></div>';
+  }
+
+  function finishWelcome() {
+    Store.applyProgram(state, ui.welcomeProgram);
+    persist();
+    ui.view = 'home';
+    ui.welcomeStep = 1;
+    render();
+    window.scrollTo(0, 0);
+    toast(ui.welcomeProgram === 'custom' ? 'Hazır! Ayarlar\'dan ilk gününü ekle' : 'Hazır! İlk antrenmanını başlat');
+  }
+
   // ---------- Kalori ----------
 
   // Ayarlar: kalori tahmini için profil (hepsi isteğe bağlı; kilo antrenman başında girilen değerden)
@@ -928,7 +996,12 @@
           return '<button class="big-card" data-action="start" data-id="' + esc(t.id) + '">' +
             '<span class="big-title">' + esc(t.name) + '</span>' +
             '<span class="muted">' + esc(sub) + '</span></button>';
-        }).join('') + '</div>';
+        }).join('') +
+        // Hiç güç günü yoksa (ilk kurulumda "Kendim oluşturacağım"): ilk günü ekletme kartı
+        (state.templates.some((t) => t.kind === 'strength') ? ''
+          : '<button class="big-card add-day" data-action="day-new"><span class="big-title">+ İlk gününü oluştur</span>' +
+            '<span class="muted">Ör. Push, Bacak, Tüm vücut. Hareketlerini sonra Ayarlar\'dan eklersin.</span></button>') +
+        '</div>';
     }
 
     const backup = needBackup
@@ -1702,6 +1775,10 @@
       render();
     },
     'kcal-chart': () => openSheet({ type: 'kcal', sel: null }),
+    'wl-next': () => { ui.welcomeStep = Math.min(3, ui.welcomeStep + 1); render(); window.scrollTo(0, 0); },
+    'wl-back': () => { ui.welcomeStep = Math.max(1, ui.welcomeStep - 1); render(); window.scrollTo(0, 0); },
+    'wl-program': (el) => { ui.welcomeProgram = el.dataset.id; render(); },
+    'wl-finish': () => finishWelcome(),
     'kcal-day': (el) => { ui.sheet.sel = Number(el.dataset.i); renderSheet(); },
     'cardio-estimate': () => {
       const form = $sheet.querySelector('form[data-form="cardio"]');
@@ -1892,6 +1969,7 @@
         const ci = state.templates.findIndex((x) => x.kind === 'cardio');
         if (ci === -1) state.templates.push(t); else state.templates.splice(ci, 0, t);
         toast(name + ' günü eklendi, şimdi hareket ekleyebilirsin');
+        ui.view = 'settings';   // ana ekrandan eklendiyse hareket eklemek için Ayarlar'a geç
       }
       persist();
       closeSheet();
@@ -1917,6 +1995,15 @@
     }
 
     if (kind === 'cardio') saveCardio(f);
+
+    if (kind === 'welcome-profile') {
+      const h = parseInt(f.get('heightCm'), 10);
+      const a = parseInt(f.get('age'), 10);
+      if (f.get('heightCm') && !(h >= 100 && h <= 250)) { toast('Boy 100–250 cm arası olmalı'); return; }
+      if (f.get('age') && !(a >= 10 && a <= 100)) { toast('Yaş 10–100 arası olmalı'); return; }
+      if (h || a || f.get('sex')) state.settings.profile = { heightCm: h || null, age: a || null, sex: f.get('sex') || null };
+      finishWelcome();
+    }
 
     if (kind === 'profile') {
       const h = parseInt(f.get('heightCm'), 10);
