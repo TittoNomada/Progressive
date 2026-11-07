@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 20;
+  const APP_VERSION = 21;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -711,6 +711,70 @@
     return est.source === 'history' ? 'bu makinedeki benzer ' + est.basedOn + ' kaydına göre' : 'genel formülle (kilona göre)';
   }
 
+  // ---------- Ana ekrana ekleme rehberi (v21) ----------
+
+  let installPrompt = null;   // Android Chrome: tarayıcının "yükle" penceresi (beforeinstallprompt)
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; if (!ui.sheet) render(); });
+
+  function installInfo() {
+    const ua = navigator.userAgent || '';
+    const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    // Instagram, WhatsApp, Facebook vb. uygulama içi tarayıcılar ana ekrana ekleyemez
+    const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|Twitter|LinkedInApp|GSA\//.test(ua);
+    return { standalone, ios, android, inApp, platform: ios ? 'ios' : android ? 'android' : 'desktop' };
+  }
+
+  // compact: karşılama ekranı (kısa), değilse Ayarlar (tüm platformlar)
+  function installBox(compact) {
+    const info = installInfo();
+    if (info.standalone) return '';
+    const step = (n, html) => '<li><span class="ins-n">' + n + '</span><span>' + html + '</span></li>';
+    const iosSteps = '<ol class="ins-steps">' +
+      step(1, 'Bu sayfayı <b>Safari</b>\'de aç.') +
+      step(2, 'Alttaki <b>•••</b> (ya da <b>Paylaş</b> ⬆︎) butonuna dokun, sonra <b>Paylaş</b>.') +
+      step(3, 'Listeyi kaydır, <b>Ana Ekrana Ekle</b>\'yi seç.') +
+      step(4, '<b>Web Uygulaması Olarak Aç</b> açık kalsın, <b>Ekle</b>\'ye dokun. Uygulamayı artık ana ekrandaki simgeden aç.') + '</ol>';
+    const androidSteps = (installPrompt ? '<button class="primary wide" data-action="install-app">📲 Uygulamayı yükle</button>' : '') +
+      '<ol class="ins-steps">' +
+      step(1, 'Bu sayfayı <b>Chrome</b>\'da aç.') +
+      step(2, 'Sağ üstteki <b>⋮</b> menüsüne dokun.') +
+      step(3, '<b>Ana ekrana ekle</b> ya da <b>Uygulamayı yükle</b>\'yi seç, onayla.') + '</ol>';
+    const warnInApp = info.inApp
+      ? '<p class="ins-warn">Bu sayfa bir uygulamanın içinden (WhatsApp, Instagram…) açılmış. Önce ⋯ menüsünden <b>' +
+        (info.ios ? 'Safari' : 'tarayıcıda') + '\'de aç</b>, sonra ekle.</p>' : '';
+    const warnData = info.ios
+      ? '<p class="muted small">Önemli: iPhone\'da Safari\'de girdiğin kayıtlar ana ekran uygulamasına geçmez. Önce ekle, sonra uygulamayı simgeden açıp başla.</p>' : '';
+    let body;
+    if (info.ios) body = iosSteps;
+    else if (info.android) body = androidSteps;
+    else body = compact ? '<p class="small">Telefonunda bu sayfayı aç: iPhone\'da Safari → Paylaş → <b>Ana Ekrana Ekle</b>, Android\'de Chrome → ⋮ → <b>Ana ekrana ekle</b>.</p>'
+      : '<p class="small"><b>iPhone</b></p>' + iosSteps + '<p class="small"><b>Android</b></p>' + androidSteps;
+    return '<div class="install-box"><p class="ins-title">📲 ' + (compact ? 'Önce telefonuna uygulama gibi ekle' : 'Telefonda ana ekrana ekle') + '</p>' +
+      '<p class="muted small">Tam ekran açılır, internetsiz de çalışır.</p>' + warnInApp + body + warnData + '</div>';
+  }
+
+  // ---------- Sürüm notu (v21) ----------
+  // Yeni sürüm gelince açılışta bir kez "Neler yeni" paneli (settings.lastSeenVersion)
+
+  function checkWhatsNew() {
+    if (!state.onboarded) return;
+    const seen = state.settings.lastSeenVersion;
+    if (seen >= APP_VERSION) return;
+    const list = L.changesSince(Seed.CHANGELOG, seen, APP_VERSION, 4);
+    state.settings.lastSeenVersion = APP_VERSION;
+    persist();
+    if (list.length) openSheet({ type: 'whatsnew', list });
+  }
+
+  function sheetWhatsNew(s) {
+    return '<h3>Yeni sürüm · ' + APP_VERSION + '</h3><p class="muted small">Uygulama güncellendi. Neler değişti:</p>' +
+      s.list.map((c) => '<div class="wn-block"><p class="section-label">Sürüm ' + c.v + '</p><ul class="wn-list">' +
+        c.items.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></div>').join('') +
+      '<div class="sheet-actions"><button class="primary wide" data-action="close-sheet">Tamam</button></div>';
+  }
+
   // ---------- İlk kurulum (v19) ----------
   // Yeni kullanıcı: tanıtım → program seçimi → isteğe bağlı profil. Kurulum bitince ana ekran.
 
@@ -729,6 +793,7 @@
         point('📈', 'İlerleme ve rekorlar', 'Hareket hareket grafik, kişisel rekorlar, haftalık ve aylık özet.') +
         point('🔥', 'Kardiyo ve kalori', 'Makine ayarları, mesafe, kalori; ağırlık antrenmanının tahmini kalorisi.') +
         '</ul>' +
+        installBox(true) +
         '<p class="muted small wl-note">Verilerin bu telefonda saklanır. Ayarlar → Yedek al ile ara ara yedekle.</p>' +
         '<button class="primary wide" data-action="wl-next">Başla</button>' +
         '<label class="text-btn file-btn wl-restore">Yedeğim var, geri yükle<input type="file" accept="application/json,.json" data-action="import" hidden></label>' +
@@ -765,6 +830,7 @@
 
   function finishWelcome() {
     Store.applyProgram(state, ui.welcomeProgram);
+    state.settings.lastSeenVersion = APP_VERSION;   // yeni kullanıcıya "Neler yeni" gösterme
     persist();
     ui.view = 'home';
     ui.welcomeStep = 1;
@@ -1271,6 +1337,7 @@
       daySections +
       '<button class="ghost-btn new-day" data-action="day-new">+ Yeni gün ekle <span class="muted small">(ör. Legs)</span></button>' +
       otherSection +
+      (installInfo().standalone ? '' : '<section class="card">' + installBox(false) + '</section>') +
       '<section class="card danger-zone"><p class="section-label">Baştan başla</p>' +
       '<p class="small muted">Tüm antrenmanları, günleri, hareketleri ve ayarları siler; uygulama ilk açılış ekranına döner. Geri alınamaz.</p>' +
       '<button class="ghost-btn danger" data-action="reset-all">Tüm verileri sıfırla</button></section>' +
@@ -1300,6 +1367,7 @@
     else if (s.type === 'add-exercise') body = sheetAddExercise();
     else if (s.type === 'add-to-template') body = sheetAddToTemplate(s);
     else if (s.type === 'kcal') body = sheetKcal(s);
+    else if (s.type === 'whatsnew') body = sheetWhatsNew(s);
     else if (s.type === 'day') body = sheetDay(s);
     else if (s.type === 'exercise-menu') body = sheetExerciseMenu(s);
     else if (s.type === 'bodyweight') body = sheetBodyWeight(s);
@@ -1778,6 +1846,13 @@
       render();
     },
     'kcal-chart': () => openSheet({ type: 'kcal', sel: null }),
+    'install-app': async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      try { await installPrompt.userChoice; } catch (e) { /* kullanıcı kapattı */ }
+      installPrompt = null;
+      render();
+    },
     'wl-next': () => { ui.welcomeStep = Math.min(3, ui.welcomeStep + 1); render(); window.scrollTo(0, 0); },
     'wl-back': () => { ui.welcomeStep = Math.max(1, ui.welcomeStep - 1); render(); window.scrollTo(0, 0); },
     'wl-program': (el) => { ui.welcomeProgram = el.dataset.id; render(); },
@@ -2192,6 +2267,7 @@
       const latest = [prevBackup, state.settings.lastBackupAt, info.exportedAt].filter(Boolean)
         .sort((a, b) => new Date(b) - new Date(a))[0] || null;
       state.settings.lastBackupAt = latest;
+      state.settings.lastSeenVersion = APP_VERSION;
       persist();
       ui.view = state.activeWorkoutId ? 'workout' : 'home';
       ui.drafts = {};
@@ -2212,6 +2288,7 @@
   }
 
   render();
+  checkWhatsNew();
 
   // Geçen süreyi dakikada bir güncelle
   setInterval(() => {

@@ -149,5 +149,16 @@
     }];
   }
 
-  return { EXERCISES, TEMPLATES, PROGRAMS, CARDIO_TYPES, CARDIO_FIELDS, seedWorkouts };
+  // Sürüm notları (v21): yeni sürüm gelince açılışta bir kez gösterilir (settings.lastSeenVersion).
+  // Kullanıcıya dönük, kısa; en yeni üstte. Yeni sürümde buraya bir satır ekle.
+  const CHANGELOG = [
+    { v: 21, items: ['Yeni sürüm gelince açılışta bu "Neler yeni" notu çıkıyor.', 'İlk açılışta ve Ayarlar\'da telefonda ana ekrana ekleme rehberi.'] },
+    { v: 20, items: ['Ayarlar → Baştan başla: tüm verileri sıfırlama (önce yedek alma seçeneğiyle).'] },
+    { v: 19, items: ['Yeni kullanıcılar için ilk kurulum: program seçimi (Push/Pull, PPL, Üst/Alt, Tüm vücut) ve profil.', 'Kataloğa bacak hareketleri ve plank eklendi.'] },
+    { v: 18, items: ['Geçmiş listesinde kalorisi girilmemiş kardiyo belirtiliyor.', 'Düzenlemeden çıkarken sade pencere: Düzenle / Değişiklikleri sil.'] },
+    { v: 17, items: ['Kalori: kardiyo tahmini, ağırlık antrenmanı kalorisi, Özet\'te günlük kalori grafiği ve hedef.', 'Geçmiş salt okunur; değişiklikler "Antrenmanı düzenle" ile ve onaylı.', 'Süreli hareketlerde her set geçen seferin aynı setine +5 sn.'] },
+    { v: 16, items: ['Süreli hareketler (plank) ve kronometre.', 'Makineye özel kardiyo ayarları (hız, eğim, seviye), kalori ve toplamlar.', 'Bitmiş antrenmanı düzenleme.'] },
+  ];
+
+  return { EXERCISES, TEMPLATES, PROGRAMS, CARDIO_TYPES, CARDIO_FIELDS, CHANGELOG, seedWorkouts };
 });

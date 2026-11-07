@@ -457,6 +457,15 @@
       .sort(byStartDesc)[0] || null;
   }
 
+  // ---------- Sürüm notu ----------
+  // Görülen sürümden sonraki (şu ana kadarki) notlar, en yeni üstte, en çok max adet.
+  // seen yoksa (bu özellikten önceki kullanıcı) yalnızca son sürümün notu.
+  function changesSince(changelog, seen, current, max) {
+    const from = seen > 0 ? seen : current - 1;
+    return (changelog || []).filter((c) => c.v > from && c.v <= current)
+      .sort((a, b) => b.v - a.v).slice(0, max || 5);
+  }
+
   // ---------- Düzenleme: değişiklik listesi ----------
   // before/after: { exercises, cardio } (düzenleme başındaki kopya ve şimdiki hali). Setler ve kardiyo id ile eşlenir.
   function workoutChanges(before, after, exercises, cardioName) {
@@ -789,7 +798,7 @@
     metricOf, sessionScore, compareAverages, workoutGroups, inGroup,
     fmtDuration, timeStepOf, cardioTotals,
     restingKcalPerMin, kcalFromMet, cardioMet, estimateCardioCalories, strengthCalories, bodyWeightAt,
-    workoutCalories, calorieSeries, lastCardioSession, workoutChanges,
+    workoutCalories, calorieSeries, lastCardioSession, workoutChanges, changesSince,
     repRange, nextTarget, isTargetSet, setPlan, priorBest, recordFlags, exerciseHistory,
   };
 });
