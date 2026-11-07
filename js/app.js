@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 21;
+  const APP_VERSION = 22;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -744,13 +744,23 @@
     const warnInApp = info.inApp
       ? '<p class="ins-warn">Bu sayfa bir uygulamanın içinden (WhatsApp, Instagram…) açılmış. Önce ⋯ menüsünden <b>' +
         (info.ios ? 'Safari' : 'tarayıcıda') + '\'de aç</b>, sonra ekle.</p>' : '';
-    const warnData = info.ios
-      ? '<p class="muted small">Önemli: iPhone\'da Safari\'de girdiğin kayıtlar ana ekran uygulamasına geçmez. Önce ekle, sonra uygulamayı simgeden açıp başla.</p>' : '';
+    // Neden önemli: kayıtlar yalnızca bu cihazda tutulduğu için nereden açıldığı veriyi etkiler
+    const why = (items) => '<div class="ins-why"><p class="ins-why-title">Neden önemli?</p><ul>' + items.map((x) => '<li>' + x + '</li>').join('') + '</ul></div>';
+    const whyIos = why([
+      '<b>Kayıtların silinmesin:</b> Safari, bir süre (yaklaşık 7 gün) açmadığın sitelerin kayıtlarını kendiliğinden silebilir. Ana ekrandaki uygulamada bu olmaz.',
+      '<b>Kayıtlar taşınmaz:</b> Safari\'de girdiğin antrenmanlar ana ekran uygulamasına geçmez; ikisi ayrı yer kullanır. Önce ekle, sonra uygulamayı simgeden açıp başla.',
+      'Tam ekran açılır, salonda internet olmasa da çalışır.',
+    ]);
+    const whyOther = why([
+      'Tek dokunuşla, tam ekran açılır; salonda internet olmasa da çalışır.',
+      'Kayıtların bu telefonda durur; tarayıcı verilerini temizlersen silinebilir. Ara ara Ayarlar → Yedek al.',
+    ]);
+    const warnData = info.ios ? whyIos : info.android ? whyOther : '';
     let body;
     if (info.ios) body = iosSteps;
     else if (info.android) body = androidSteps;
     else body = compact ? '<p class="small">Telefonunda bu sayfayı aç: iPhone\'da Safari → Paylaş → <b>Ana Ekrana Ekle</b>, Android\'de Chrome → ⋮ → <b>Ana ekrana ekle</b>.</p>'
-      : '<p class="small"><b>iPhone</b></p>' + iosSteps + '<p class="small"><b>Android</b></p>' + androidSteps;
+      : '<p class="small"><b>iPhone</b></p>' + iosSteps + whyIos + '<p class="small"><b>Android</b></p>' + androidSteps;
     return '<div class="install-box"><p class="ins-title">📲 ' + (compact ? 'Önce telefonuna uygulama gibi ekle' : 'Telefonda ana ekrana ekle') + '</p>' +
       '<p class="muted small">Tam ekran açılır, internetsiz de çalışır.</p>' + warnInApp + body + warnData + '</div>';
   }

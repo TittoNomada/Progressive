@@ -571,3 +571,8 @@ button.prog-row:last-child { border-bottom: 0; }
 .wn-block { margin-top: 12px; }
 .wn-list { margin: 4px 0 0; padding-left: 18px; }
 .wn-list li { margin: 4px 0; }
+.ins-why { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.ins-why-title { font-weight: 700; font-size: 14px; margin: 0 0 4px; }
+.ins-why ul { margin: 0; padding-left: 18px; }
+.ins-why li { font-size: 14px; margin: 4px 0; color: var(--muted); }
+.ins-why li b { color: var(--text); }
