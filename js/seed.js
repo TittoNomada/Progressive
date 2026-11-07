@@ -152,6 +152,7 @@
   // Sürüm notları (v21): yeni sürüm gelince açılışta bir kez gösterilir (settings.lastSeenVersion).
   // Kullanıcıya dönük, kısa; en yeni üstte. Yeni sürümde buraya bir satır ekle.
   const CHANGELOG = [
+    { v: 23, items: ['İlk kurulumda ana ekrana ekleme artık ayrı bir adım; başlangıç ekranında kısa özeti var.'] },
     { v: 22, items: ['Ana ekrana ekleme rehberinde "Neden önemli?": iPhone\'da Safari\'de kayıtların silinebilmesi ve ana ekran uygulamasına taşınmaması.'] },
     { v: 21, items: ['Yeni sürüm gelince açılışta bu "Neler yeni" notu çıkıyor.', 'İlk açılışta ve Ayarlar\'da telefonda ana ekrana ekleme rehberi.'] },
     { v: 20, items: ['Ayarlar → Baştan başla: tüm verileri sıfırlama (önce yedek alma seçeneğiyle).'] },

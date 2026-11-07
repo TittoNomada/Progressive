@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 22;
+  const APP_VERSION = 23;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -788,11 +788,19 @@
   // ---------- İlk kurulum (v19) ----------
   // Yeni kullanıcı: tanıtım → program seçimi → isteğe bağlı profil. Kurulum bitince ana ekran.
 
+  // Adımlar: ana ekrandan açılmışsa "ekle" sayfası atlanır
+  function welcomeSteps() {
+    return installInfo().standalone ? ['intro', 'program', 'profile'] : ['intro', 'install', 'program', 'profile'];
+  }
+
   function renderWelcome() {
-    const step = ui.welcomeStep;
-    const dots = '<div class="wl-dots" aria-label="Adım ' + step + ' / 3">' + [1, 2, 3].map((n) =>
-      '<i class="' + (n === step ? 'on' : n < step ? 'done' : '') + '"></i>').join('') + '</div>';
-    if (step === 1) {
+    const steps = welcomeSteps();
+    ui.welcomeStep = Math.min(Math.max(1, ui.welcomeStep), steps.length);
+    const n = ui.welcomeStep;
+    const step = steps[n - 1];
+    const dots = '<div class="wl-dots" aria-label="Adım ' + n + ' / ' + steps.length + '">' + steps.map((_, i) =>
+      '<i class="' + (i + 1 === n ? 'on' : i + 1 < n ? 'done' : '') + '"></i>').join('') + '</div>';
+    if (step === 'intro') {
       const point = (icon, title, text) => '<li><span class="wl-ic" aria-hidden="true">' + icon + '</span><span><b>' + title + '</b>' +
         '<span class="muted small">' + text + '</span></span></li>';
       return '<div class="welcome">' + dots +
@@ -803,13 +811,31 @@
         point('📈', 'İlerleme ve rekorlar', 'Hareket hareket grafik, kişisel rekorlar, haftalık ve aylık özet.') +
         point('🔥', 'Kardiyo ve kalori', 'Makine ayarları, mesafe, kalori; ağırlık antrenmanının tahmini kalorisi.') +
         '</ul>' +
-        installBox(true) +
+        (steps.includes('install')
+          ? '<div class="wl-install-sum"><b>📲 Telefonda kullanacaksan ana ekrana ekle</b>' +
+            '<span class="muted small">Kayıtların silinmez, tam ekran ve internetsiz çalışır. Nasıl yapılacağı bir sonraki adımda.</span></div>' : '') +
         '<p class="muted small wl-note">Verilerin bu telefonda saklanır. Ayarlar → Yedek al ile ara ara yedekle.</p>' +
         '<button class="primary wide" data-action="wl-next">Başla</button>' +
         '<label class="text-btn file-btn wl-restore">Yedeğim var, geri yükle<input type="file" accept="application/json,.json" data-action="import" hidden></label>' +
         '<p class="muted small center-text">sürüm ' + APP_VERSION + '</p></div>';
     }
-    if (step === 2) {
+    if (step === 'install') {
+      const info = installInfo();
+      const phone = info.ios || info.android;
+      return '<div class="welcome">' + dots +
+        '<h2>Telefonuna uygulama gibi ekle</h2>' +
+        '<p class="muted">' + (phone ? 'Bir dakikanı alır; kayıtlarının güvende kalması için önemli.' : 'Bilgisayardasın. Telefonda kullanacaksan bu adımları telefonunda yap.') + '</p>' +
+        installBox(false) +
+        (info.ios
+          ? '<p class="wl-after"><b>Ekledikten sonra</b> bu sayfayı kapat, uygulamayı <b>ana ekrandaki simgeden</b> aç ve kuruluma orada devam et.</p>' +
+            '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
+            '<button class="ghost-btn" data-action="wl-next">Eklemeden devam et</button></div>' +
+            '<p class="muted small center-text">Eklemeden devam edersen kayıtların Safari\'de kalır ve silinebilir.</p>'
+          : '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
+            '<button class="primary" data-action="wl-next">' + (phone ? 'Ekledim / devam' : 'Devam') + '</button></div>') +
+        '</div>';
+    }
+    if (step === 'program') {
       const cards = Seed.PROGRAMS.map((p) => {
         const on = ui.welcomeProgram === p.id;
         const days = p.templates.map((t) => '<span class="wl-day"><b>' + esc(t.name) + '</b> ' +
@@ -1863,7 +1889,7 @@
       installPrompt = null;
       render();
     },
-    'wl-next': () => { ui.welcomeStep = Math.min(3, ui.welcomeStep + 1); render(); window.scrollTo(0, 0); },
+    'wl-next': () => { ui.welcomeStep = Math.min(welcomeSteps().length, ui.welcomeStep + 1); render(); window.scrollTo(0, 0); },
     'wl-back': () => { ui.welcomeStep = Math.max(1, ui.welcomeStep - 1); render(); window.scrollTo(0, 0); },
     'wl-program': (el) => { ui.welcomeProgram = el.dataset.id; render(); },
     'wl-finish': () => finishWelcome(),

@@ -576,3 +576,7 @@ button.prog-row:last-child { border-bottom: 0; }
 .ins-why ul { margin: 0; padding-left: 18px; }
 .ins-why li { font-size: 14px; margin: 4px 0; color: var(--muted); }
 .ins-why li b { color: var(--text); }
+.wl-install-sum { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accent); margin: 0 0 14px; }
+.welcome .install-box { border: 0; padding: 0; margin: 12px 0; }
+.welcome .install-box .ins-title { display: none; }
+.wl-after { margin: 14px 0 0; padding: 12px; border-radius: 12px; border: 1px solid var(--accent); font-size: 15px; }
