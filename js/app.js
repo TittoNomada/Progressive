@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 19;
+  const APP_VERSION = 20;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -1271,6 +1271,9 @@
       daySections +
       '<button class="ghost-btn new-day" data-action="day-new">+ Yeni gün ekle <span class="muted small">(ör. Legs)</span></button>' +
       otherSection +
+      '<section class="card danger-zone"><p class="section-label">Baştan başla</p>' +
+      '<p class="small muted">Tüm antrenmanları, günleri, hareketleri ve ayarları siler; uygulama ilk açılış ekranına döner. Geri alınamaz.</p>' +
+      '<button class="ghost-btn danger" data-action="reset-all">Tüm verileri sıfırla</button></section>' +
       '<p class="muted small center-text">Progressive · sürüm ' + APP_VERSION + '</p>';
   }
 
@@ -1805,6 +1808,36 @@
 
     'close-sheet': () => closeSheet(),
     'export': exportBackup,
+    // Tüm verileri sıfırla: iki onay, ilkinde önce yedek alma seçeneği. Sonra ilk kurulum ekranı.
+    'reset-all': async () => {
+      const n = state.workouts.filter((w) => w.endedAt).length;
+      const last = state.settings.lastBackupAt;
+      const first = await ask({
+        title: 'Tüm veriler silinsin mi?',
+        message: n + ' antrenman, tüm günlerin, hareketlerin ve ayarların silinecek. ' +
+          (last ? 'Son yedeğin: ' + L.dateTr(last, { noYear: true }) + '.' : 'Hiç yedek almadın.') + ' Silmeden önce yedek almanı öneririm.',
+        ok: 'Sıfırla', danger: true, alt: 'Önce yedek al', cancel: 'Vazgeç',
+      });
+      if (first === 'alt') { await exportBackup(); return; }
+      if (first !== true) return;
+      const sure = await ask({
+        title: 'Emin misin?', message: 'Bu işlem geri alınamaz. Yedeğin yoksa ' + n + ' antrenman kalıcı olarak gider.',
+        ok: 'Evet, hepsini sil', danger: true, cancel: 'Vazgeç',
+      });
+      if (!sure) return;
+      state = Store.initialState();
+      persist();
+      ui.view = 'welcome';
+      ui.welcomeStep = 1;
+      ui.welcomeProgram = 'push-pull';
+      ui.drafts = {};
+      ui.sw = null;
+      ui.sheet = null;
+      ui.focus = null;
+      render();
+      window.scrollTo(0, 0);
+      toast('Tüm veriler silindi');
+    },
     'plain-step': (el) => {
       if (el.dataset.field === 'kcal-goal') {
         state.settings.weeklyKcalGoal = Math.max(100, (state.settings.weeklyKcalGoal || 2000) + 100 * Number(el.dataset.dir));

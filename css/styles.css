@@ -557,3 +557,4 @@ button.prog-row:last-child { border-bottom: 0; }
 .wl-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 16px; }
 .welcome .text-btn { display: block; margin: 10px auto 0; }
 .big-card.add-day { border: 1px dashed var(--line); background: transparent; }
+.danger-zone .ghost-btn.danger { width: 100%; margin-top: 10px; color: var(--danger, #ff7a6b); border-color: currentColor; }
