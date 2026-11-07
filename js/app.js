@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 23;
+  const APP_VERSION = 24;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -735,12 +735,14 @@
       step(1, 'Bu sayfayı <b>Safari</b>\'de aç.') +
       step(2, 'Alttaki <b>•••</b> (ya da <b>Paylaş</b> ⬆︎) butonuna dokun, sonra <b>Paylaş</b>.') +
       step(3, 'Listeyi kaydır, <b>Ana Ekrana Ekle</b>\'yi seç.') +
-      step(4, '<b>Web Uygulaması Olarak Aç</b> açık kalsın, <b>Ekle</b>\'ye dokun. Uygulamayı artık ana ekrandaki simgeden aç.') + '</ol>';
+      step(4, '<b>Web Uygulaması Olarak Aç</b> açık kalsın, <b>Ekle</b>\'ye dokun.') +
+      step(5, '<b>Bu Safari sayfasını kapat</b>, uygulamayı ana ekrandaki <b>Progressive</b> simgesinden aç. Kuruluma orada devam et.') + '</ol>';
     const androidSteps = (installPrompt ? '<button class="primary wide" data-action="install-app">📲 Uygulamayı yükle</button>' : '') +
       '<ol class="ins-steps">' +
       step(1, 'Bu sayfayı <b>Chrome</b>\'da aç.') +
       step(2, 'Sağ üstteki <b>⋮</b> menüsüne dokun.') +
-      step(3, '<b>Ana ekrana ekle</b> ya da <b>Uygulamayı yükle</b>\'yi seç, onayla.') + '</ol>';
+      step(3, '<b>Ana ekrana ekle</b> ya da <b>Uygulamayı yükle</b>\'yi seç, onayla.') +
+      step(4, 'Bu sekmeyi kapat, uygulamayı ana ekrandaki <b>Progressive</b> simgesinden aç.') + '</ol>';
     const warnInApp = info.inApp
       ? '<p class="ins-warn">Bu sayfa bir uygulamanın içinden (WhatsApp, Instagram…) açılmış. Önce ⋯ menüsünden <b>' +
         (info.ios ? 'Safari' : 'tarayıcıda') + '\'de aç</b>, sonra ekle.</p>' : '';
@@ -753,7 +755,8 @@
     ]);
     const whyOther = why([
       'Tek dokunuşla, tam ekran açılır; salonda internet olmasa da çalışır.',
-      'Kayıtların bu telefonda durur; tarayıcı verilerini temizlersen silinebilir. Ara ara Ayarlar → Yedek al.',
+      '<b>Eklemeden de kullanabilirsin:</b> Android\'de Chrome\'da girdiğin kayıtlar, uygulamayı sonradan eklesen de durur.',
+      'Kayıtların bu telefonda durur; Chrome\'da site verilerini temizlersen silinebilir. Ara ara Ayarlar → Yedek al.',
     ]);
     const warnData = info.ios ? whyIos : info.android ? whyOther : '';
     let body;
@@ -827,12 +830,12 @@
         '<p class="muted">' + (phone ? 'Bir dakikanı alır; kayıtlarının güvende kalması için önemli.' : 'Bilgisayardasın. Telefonda kullanacaksan bu adımları telefonunda yap.') + '</p>' +
         installBox(false) +
         (info.ios
-          ? '<p class="wl-after"><b>Ekledikten sonra</b> bu sayfayı kapat, uygulamayı <b>ana ekrandaki simgeden</b> aç ve kuruluma orada devam et.</p>' +
-            '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
+          ? '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
             '<button class="ghost-btn" data-action="wl-next">Eklemeden devam et</button></div>' +
             '<p class="muted small center-text">Eklemeden devam edersen kayıtların Safari\'de kalır ve silinebilir.</p>'
           : '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
-            '<button class="primary" data-action="wl-next">' + (phone ? 'Ekledim / devam' : 'Devam') + '</button></div>') +
+            '<button class="primary" data-action="wl-next">' + (info.android ? 'Şimdilik burada devam et' : 'Devam') + '</button></div>' +
+            '') +
         '</div>';
     }
     if (step === 'program') {
@@ -2325,6 +2328,8 @@
 
   render();
   checkWhatsNew();
+  // Kayıtlar yalnızca bu cihazda: tarayıcıdan kalıcı depolama iste (yer daralınca otomatik silinmesin)
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* desteklenmiyor */ }
 
   // Geçen süreyi dakikada bir güncelle
   setInterval(() => {
