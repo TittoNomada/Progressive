@@ -509,3 +509,30 @@ button.prog-row:last-child { border-bottom: 0; }
   color: var(--text); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
 }
 .center-text { text-align: center; margin-top: 6px; }
+
+/* ---------- v17 ---------- */
+.last-cardio { margin: -4px 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.last-cardio p { margin: 2px 0; }
+.kcal-est { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 6px; }
+.kcal-missing { font-size: 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; padding: 0 6px; margin-left: 4px; white-space: nowrap; }
+.cardio-note { display: block; margin-top: 2px; }
+.row-btn.static { cursor: default; }
+.dialog-list { margin: 8px 0 4px; padding-left: 18px; max-height: 40vh; overflow: auto; text-align: left; }
+.dialog-list li { margin: 3px 0; font-size: 14px; }
+.dialog-actions.three { flex-direction: column-reverse; }
+.dialog-actions.three button { width: 100%; }
+.set-row.static { cursor: default; }
+:root { --kc-cardio: #7fa313; --kc-strength: #4a86ee; }
+.tile.wide { grid-column: 1 / -1; }
+.tile-btn { text-align: left; border: 1px solid var(--line); cursor: pointer; color: inherit; font: inherit; }
+.tile-row { display: flex; justify-content: space-between; align-items: baseline; }
+.tile-row .chev { font-size: 13px; color: var(--muted); }
+.kcal-line { margin: 4px 0 12px; text-align: center; }
+.kcal-head { margin: 4px 0 6px; } .kcal-head b { font-size: 28px; }
+.kcal-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 10px 0 4px; }
+.lg-sq { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.lg-sq.cardio { background: var(--kc-cardio); } .lg-sq.strength { background: var(--kc-strength); }
+.kcal-chart .kb.cardio { fill: var(--kc-cardio); } .kcal-chart .kb.strength { fill: var(--kc-strength); }
+.kcal-chart .kb-sel { fill: var(--surface-2); }
+.kcal-read { min-height: 1.5em; margin-top: 6px; }
+.kcal-note { margin-top: 6px; }

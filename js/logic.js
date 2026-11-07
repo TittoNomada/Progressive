@@ -174,6 +174,15 @@
     const prev = o.prevSets || [];
     const cur = o.currentSets || [];
     if (o.isWarmup) return { role: 'warmup', target: null, ref: null, draft: null };
+    // Süreli hareket (kullanıcı isteği, v17): set düzeninden bağımsız, her çalışma seti
+    // geçen seferin aynı sıradaki setinin süresi + süre adımı (o sıra yoksa geçen seferin son seti).
+    if (type === 'timed') {
+      const pw = prev.filter(isWorkingSet);
+      const i = cur.filter(isWorkingSet).length;
+      const ref = pw[i] || pw[pw.length - 1] || null;
+      const target = nextTarget(ex, ref);
+      return { role: 'target', target, ref, draft: target ? draftOf(target) : null };
+    }
     if (o.mode === 'top') {
       const working = cur.filter(isWorkingSet);
       if (!working.length) {
@@ -292,6 +301,200 @@
     return { weight: 0, reps: type === 'weighted' ? 8 : 10, isWarmup: false };
   }
 
+  // ---------- Kalori (tahmini) ----------
+  // Kardiyo: kullanıcının makineden girdiği kalori esas. Girilmediyse önce kendi geçmiş kayıtlarından
+  // (aynı makine, benzer ayarlar → dakika başı kalori) tahmin edilir; geçmiş yoksa MET formülüyle.
+  // Ağırlık: set sayısından süre (çalışma seti ≈ 2 dk dinlenme dahil, ısınma ≈ 1 dk) × MET 5 (orta-yoğun direnç antrenmanı).
+  // Boy, yaş ve cinsiyet girildiyse 1 MET = kişinin dinlenme metabolizması (Mifflin-St Jeor), yoksa 1 MET = 1 kcal/kg/saat.
+
+  const STRENGTH_MET = 5;
+  const MIN_PER_WORK_SET = 2;
+  const MIN_PER_WARMUP_SET = 1;
+  // Ayar benzerliği için ölçek: bu kadar fark = 1 birim uzaklık
+  const SETTING_SCALE = { speed: 1, incline: 2, level: 2, setting: 2 };
+
+  // Dinlenme metabolizması, kcal/dk (boy, yaş, cinsiyet ve kilo gerekli)
+  function restingKcalPerMin(profile, kg) {
+    const p = profile || {};
+    if (!(kg > 0 && p.heightCm > 0 && p.age > 0 && (p.sex === 'm' || p.sex === 'f'))) return null;
+    const bmr = 10 * kg + 6.25 * p.heightCm - 5 * p.age + (p.sex === 'm' ? 5 : -161);
+    return bmr / 1440;
+  }
+
+  function kcalFromMet(met, minutes, kg, profile) {
+    if (!(met > 0) || !(minutes > 0) || !(kg > 0)) return null;
+    const rmr = restingKcalPerMin(profile, kg);
+    return rmr !== null ? met * rmr * minutes : (met * kg * minutes) / 60;
+  }
+
+  // Makine ve ayarlara göre MET (genel formül; geçmiş kayıt yoksa)
+  function cardioMet(type, st) {
+    const s = st || {};
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    if (type === 'treadmill' || type === 'walk') {
+      // ACSM: yürüme/koşu oksijen tüketimi (hız m/dk, eğim oran)
+      const kmh = s.speed > 0 ? s.speed : type === 'walk' ? 5 : 8;
+      const v = (kmh * 1000) / 60;
+      const g = (s.incline || 0) / 100;
+      const vo2 = kmh >= 8 ? 0.2 * v + 0.9 * v * g + 3.5 : 0.1 * v + 1.8 * v * g + 3.5;
+      return vo2 / 3.5;
+    }
+    if (type === 'bike') return s.level > 0 ? clamp(3.5 + 0.35 * s.level, 3.5, 12) : 6.8;
+    if (type === 'elliptical') return s.level > 0 ? clamp(4 + 0.3 * s.level, 4, 10) : 5;
+    if (type === 'rower') return s.level > 0 ? clamp(4.8 + 0.3 * s.level, 4.8, 12) : 7;
+    if (type === 'stairs') return s.level > 0 ? clamp(5 + 0.45 * s.level, 5, 12) : 9;
+    return 5;
+  }
+
+  function settingDistance(a, b) {
+    const keys = new Set(Object.keys(a || {}).concat(Object.keys(b || {})));
+    let d = 0;
+    for (const k of keys) {
+      const x = a && a[k], y = b && b[k];
+      if (x === undefined || x === null || y === undefined || y === null) { d += 0.5; continue; }
+      d += Math.abs(x - y) / (SETTING_SCALE[k] || 2);
+    }
+    return d;
+  }
+
+  // entry: { type, minutes, settings }. past: önceki kardiyo kayıtları (elle girilmiş kalorisi olanlar kullanılır).
+  // Dönüş: { kcal, source: 'history' | 'formula', basedOn } ya da null
+  function estimateCardioCalories(entry, past, kg, profile) {
+    if (!entry || !(entry.minutes > 0)) return null;
+    const same = (past || []).filter((c) => c && c !== entry && c.type === entry.type && c.calories > 0 && c.minutes > 0 && !c.caloriesEstimated);
+    if (same.length) {
+      const ranked = same.map((c) => ({ c, d: settingDistance(entry.settings, c.settings) }))
+        .sort((x, y) => x.d - y.d).slice(0, 5);
+      let wSum = 0, rate = 0;
+      for (const r of ranked) {
+        const w = 1 / Math.pow(1 + r.d, 2);
+        wSum += w;
+        rate += w * (r.c.calories / r.c.minutes);
+      }
+      return { kcal: Math.round((rate / wSum) * entry.minutes), source: 'history', basedOn: ranked.length };
+    }
+    const kcal = kcalFromMet(cardioMet(entry.type, entry.settings), entry.minutes, kg, profile);
+    return kcal === null ? null : { kcal: Math.round(kcal), source: 'formula', basedOn: 0 };
+  }
+
+  // Ağırlık antrenmanının tahmini kalorisi (kardiyo hariç)
+  function strengthCalories(w, kg, profile) {
+    let minutes = 0;
+    for (const e of (w && w.exercises) || []) {
+      for (const st of e.sets || []) {
+        if (!(st.reps > 0 || st.seconds > 0)) continue;
+        minutes += st.isWarmup ? MIN_PER_WARMUP_SET : MIN_PER_WORK_SET;
+      }
+    }
+    if (!minutes) return 0;
+    const k = kcalFromMet(STRENGTH_MET, minutes, kg, profile);
+    return k === null ? null : Math.round(k);
+  }
+
+  // O tarihteki (ya da öncesindeki en yakın) kilo; hiç yoksa en eski ölçüm
+  function bodyWeightAt(workouts, at) {
+    const t = new Date(at);
+    const measured = (workouts || []).filter((w) => w.bodyWeight > 0)
+      .sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+    if (!measured.length) return null;
+    let kg = measured[0].bodyWeight;
+    for (const w of measured) { if (new Date(w.startedAt) <= t) kg = w.bodyWeight; else break; }
+    return kg;
+  }
+
+  // Bir antrenmanın kalorisi: ağırlık (tahmini) + kardiyo (girilen ya da tahmini)
+  function workoutCalories(state, w) {
+    const profile = (state.settings && state.settings.profile) || {};
+    const kg = w.bodyWeight > 0 ? w.bodyWeight : bodyWeightAt(state.workouts, w.startedAt);
+    const strength = strengthCalories(w, kg, profile);
+    let cardio = 0, entered = 0, estimated = 0, missing = 0;
+    for (const c of w.cardio || []) {
+      if (c.calories > 0) {
+        cardio += c.calories;
+        if (c.caloriesEstimated) estimated++; else entered++;
+      } else {
+        missing++;
+      }
+    }
+    return {
+      strength,                       // null: kilo bilinmiyor
+      cardio,
+      cardioEntries: (w.cardio || []).length,
+      cardioMissing: missing,         // kalorisi girilmemiş kardiyo kaydı
+      cardioEstimated: estimated,
+      total: (strength || 0) + cardio,
+    };
+  }
+
+  // Dönemin günlük kalori dizisi (Özet → kalori grafiği). week: 7 gün, month: ayın günleri.
+  function calorieSeries(state, kind, ref, group) {
+    const range = periodRange(kind, ref, 0);
+    const done = (state.workouts || []).filter(isFinished).filter((w) => inRange(w, range) && inGroup(w, group));
+    const days = [];
+    for (let d = new Date(range.start); d < range.end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      days.push({ date: d, strength: 0, cardio: 0, total: 0, workouts: 0 });
+    }
+    let strengthUnknown = 0, cardioMissing = 0;
+    for (const w of done) {
+      const day = days.find((x) => dayKey(x.date) === dayKey(w.startedAt));
+      if (!day) continue;
+      const c = workoutCalories(state, w);
+      if (c.strength === null && hasStrengthSets(w)) strengthUnknown++;
+      cardioMissing += c.cardioMissing;
+      day.strength += c.strength || 0;
+      day.cardio += c.cardio;
+      day.total = day.strength + day.cardio;
+      day.workouts++;
+    }
+    const sum = (k) => days.reduce((t, x) => t + x[k], 0);
+    return { range, days, strength: sum('strength'), cardio: sum('cardio'), total: sum('total'), strengthUnknown, cardioMissing };
+  }
+
+  // Son kardiyo antrenmanı (geçen seferki kardiyo özeti için)
+  function lastCardioSession(workouts, excludeId, before) {
+    const t = before ? new Date(before) : null;
+    return (workouts || []).filter((w) => w.id !== excludeId && (w.cardio || []).length && (!t || new Date(w.startedAt) < t))
+      .sort(byStartDesc)[0] || null;
+  }
+
+  // ---------- Düzenleme: değişiklik listesi ----------
+  // before/after: { exercises, cardio } (düzenleme başındaki kopya ve şimdiki hali). Setler ve kardiyo id ile eşlenir.
+  function workoutChanges(before, after, exercises, cardioName) {
+    const ex = exercises || {};
+    const nameOf = (id) => (ex[id] && ex[id].name) || id;
+    const typeOf = (id) => (ex[id] && ex[id].type) || 'weighted';
+    const sets = (w) => {
+      const m = new Map();
+      for (const e of (w && w.exercises) || []) {
+        (e.sets || []).forEach((st) => m.set(st.id, { exerciseId: e.exerciseId, set: st }));
+      }
+      return m;
+    };
+    const a = sets(before), b = sets(after);
+    const out = [];
+    const fmt = (x) => (x.set.isWarmup ? 'ısınma ' : '') + formatSet(typeOf(x.exerciseId), x.set);
+    for (const [id, x] of b) {
+      const old = a.get(id);
+      if (!old) out.push({ kind: 'add', text: nameOf(x.exerciseId) + ': set eklendi (' + fmt(x) + ')' });
+      else if (old.set.weight !== x.set.weight || old.set.reps !== x.set.reps || old.set.seconds !== x.set.seconds || !!old.set.isWarmup !== !!x.set.isWarmup) {
+        out.push({ kind: 'change', text: nameOf(x.exerciseId) + ': ' + fmt(old) + ' → ' + fmt(x) });
+      }
+    }
+    for (const [id, x] of a) if (!b.has(id)) out.push({ kind: 'remove', text: nameOf(x.exerciseId) + ': set silindi (' + fmt(x) + ')' });
+    const cn = (c) => (cardioName ? cardioName(c.type) : c.type) + ' ' + c.minutes + ' dk';
+    const ca = new Map(((before && before.cardio) || []).map((c) => [c.id, c]));
+    const cb = new Map(((after && after.cardio) || []).map((c) => [c.id, c]));
+    for (const [id, c] of cb) {
+      const old = ca.get(id);
+      if (!old) out.push({ kind: 'add', text: 'Kardiyo eklendi: ' + cn(c) });
+      else if (JSON.stringify([old.type, old.minutes, old.distanceKm, old.calories, old.settings]) !== JSON.stringify([c.type, c.minutes, c.distanceKm, c.calories, c.settings])) {
+        out.push({ kind: 'change', text: 'Kardiyo değişti: ' + cn(old) + (old.minutes !== c.minutes || old.type !== c.type ? ' → ' + cn(c) : '') });
+      }
+    }
+    for (const [id, c] of ca) if (!cb.has(id)) out.push({ kind: 'remove', text: 'Kardiyo silindi: ' + cn(c) });
+    return out;
+  }
+
   // ---------- Dönemler ve genel bakış ----------
 
   // Pazartesi başlayan hafta veya takvim ayı. offset = -1 bir önceki dönem.
@@ -334,7 +537,11 @@
       const vals = (list || []).map((c) => Number(c[key])).filter((v) => v > 0);
       return vals.length ? Math.round(vals.reduce((t, v) => t + v, 0) * 100) / 100 : null;
     };
-    return { count: (list || []).length, minutes: sum('minutes') || 0, distanceKm: sum('distanceKm'), calories: sum('calories') };
+    return {
+      count: (list || []).length, minutes: sum('minutes') || 0, distanceKm: sum('distanceKm'), calories: sum('calories'),
+      caloriesMissing: (list || []).filter((c) => !(Number(c.calories) > 0)).length,
+      caloriesEstimated: (list || []).filter((c) => Number(c.calories) > 0 && c.caloriesEstimated).length,
+    };
   }
 
   // Bir antrenmandaki hareketin "güç puanı" = o antrenmandaki en iyi setinin değeri.
@@ -580,6 +787,8 @@
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,
     metricOf, sessionScore, compareAverages, workoutGroups, inGroup,
     fmtDuration, timeStepOf, cardioTotals,
+    restingKcalPerMin, kcalFromMet, cardioMet, estimateCardioCalories, strengthCalories, bodyWeightAt,
+    workoutCalories, calorieSeries, lastCardioSession, workoutChanges,
     repRange, nextTarget, isTargetSet, setPlan, priorBest, recordFlags, exerciseHistory,
   };
 });

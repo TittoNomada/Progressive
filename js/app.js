@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 16;
+  const APP_VERSION = 17;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -267,15 +267,17 @@
   // Uygulama içi onay penceresi (tarayıcının üstten çıkan confirm/alert'i yerine).
   // ok: true/false döner. cancel: null verilirse tek butonlu bilgi penceresi olur.
   function ask(opts) {
-    const o = Object.assign({ title: '', message: '', ok: 'Tamam', cancel: 'Vazgeç', danger: false }, opts);
+    const o = Object.assign({ title: '', message: '', ok: 'Tamam', cancel: 'Vazgeç', danger: false, alt: null, list: null }, opts);
     const root = document.getElementById('dialog-root');
     return new Promise((resolve) => {
       root.innerHTML = '<div class="dialog-backdrop" data-dialog="cancel"></div>' +
         '<div class="dialog" role="alertdialog" aria-modal="true">' +
         (o.title ? '<h3>' + esc(o.title) + '</h3>' : '') +
         (o.message ? '<p>' + esc(o.message) + '</p>' : '') +
-        '<div class="dialog-actions">' +
+        (o.list && o.list.length ? '<ul class="dialog-list">' + o.list.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
+        '<div class="dialog-actions' + (o.alt ? ' three' : '') + '">' +
         (o.cancel ? '<button class="dialog-cancel" data-dialog="cancel">' + esc(o.cancel) + '</button>' : '') +
+        (o.alt ? '<button class="dialog-cancel" data-dialog="alt">' + esc(o.alt) + '</button>' : '') +
         '<button class="primary' + (o.danger ? ' danger-fill' : '') + '" data-dialog="ok">' + esc(o.ok) + '</button>' +
         '</div></div>';
       const done = (v) => {
@@ -287,6 +289,7 @@
         const b = ev.target.closest('[data-dialog]');
         if (!b) return;
         ev.stopPropagation();
+        if (b.dataset.dialog === 'alt') { done('alt'); return; }
         done(b.dataset.dialog === 'ok' || (!o.cancel && b.dataset.dialog === 'cancel'));
       };
       const okBtn = root.querySelector('[data-dialog="ok"]');
@@ -305,23 +308,7 @@
       if (del) discardWorkout(true);
       return;
     }
-    if (w.editingEndedAt) {
-      w.exercises = w.exercises.filter((e) => e.sets.length);
-      w.endedAt = w.editingEndedAt;
-      delete w.editingEndedAt;
-      delete w._plan;
-      state.activeWorkoutId = null;
-      persist();
-      ui.detailId = w.id;
-      ui.view = 'detail';
-      ui.focus = null;
-      ui.drafts = {};
-      ui.sw = null;
-      render();
-      window.scrollTo(0, 0);
-      toast('Değişiklikler kaydedildi');
-      return;
-    }
+    if (w.editingEndedAt) { await leaveEditing('save'); return; }
     const left = w.exercises.reduce((t, e) => t + Math.max(0, e.targetSets - workDone(e)), 0);
     const ok = await ask({
       title: 'Antrenmanı bitir?',
@@ -344,6 +331,59 @@
     ui.sw = null;
     render();
     window.scrollTo(0, 0);
+  }
+
+  // ---------- Bitmiş antrenmanı düzenleme ----------
+
+  function editChanges(w) {
+    // v16'da açılmış (kopyası olmayan) düzenleme: karşılaştırılacak hal yok, değişiklik yok sayılır, veri olduğu gibi kalır
+    if (!w.editingSnapshot) return [];
+    return L.workoutChanges(w.editingSnapshot, w, state.exercises, cardioName);
+  }
+
+  // Düzenlemeyi bitir: değişiklikleri kaydet (save) ya da başlangıç haline döndür (discard)
+  function closeEditing(w, mode) {
+    if (mode === 'discard' && w.editingSnapshot) {
+      w.exercises = w.editingSnapshot.exercises;
+      w.cardio = w.editingSnapshot.cardio;
+    }
+    w.exercises = w.exercises.filter((e) => e.sets.length);
+    w.endedAt = w.editingEndedAt;
+    delete w.editingEndedAt;
+    delete w.editingSnapshot;
+    delete w._plan;
+    state.activeWorkoutId = null;
+    persist();
+    ui.detailId = w.id;
+    ui.view = 'detail';
+    ui.focus = null;
+    ui.drafts = {};
+    ui.sw = null;
+    closeSheet();
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  // intent: 'save' (Kaydet butonu) | 'exit' (geri oku). Düzenlemeden onaysız çıkılmaz.
+  async function leaveEditing(intent) {
+    const w = activeWorkout();
+    if (!w || !w.editingEndedAt) return;
+    const changes = editChanges(w).map((c) => c.text);
+    if (!changes.length) {
+      const ok = await ask({ title: 'Hiçbir şey değiştirmedin',
+        message: intent === 'save' ? 'Kaydedilecek bir değişiklik yok. Düzenlemeden çıkılsın mı?' : 'Düzenlemeden çıkmak istiyor musun?',
+        ok: 'Çık', cancel: 'Düzenlemeye dön' });
+      if (ok) { closeEditing(w, 'discard'); toast('Değişiklik yapılmadı'); }
+      return;
+    }
+    const n = changes.length;
+    const r = intent === 'save'
+      ? await ask({ title: n + ' değişiklik kaydedilecek', message: L.dateTr(w.startedAt, { noYear: true }) + ' ' + w.name + ' kaydına:', list: changes,
+        ok: 'Kaydet', cancel: 'Geri dön' })
+      : await ask({ title: 'Kaydedilmemiş ' + n + ' değişiklik', message: 'Çıkmadan önce ne yapalım?', list: changes,
+        ok: 'Kaydet ve çık', alt: 'Değişiklikleri at', cancel: 'Düzenlemeye dön' });
+    if (r === true) { closeEditing(w, 'save'); toast(n + ' değişiklik kaydedildi'); }
+    else if (r === 'alt') { closeEditing(w, 'discard'); toast('Değişiklikler atıldı'); }
   }
 
   // Antrenmandaki hareket listesi değiştiğinde güncel planı sakla (şablon önerisi için).
@@ -480,23 +520,22 @@
     const cards = w.exercises.map((ex, i) => {
       const e = exercise(ex.exerciseId);
       const best = L.bestSet(e.type, ex.sets);
+      // Salt okunur: düzeltmek için "Antrenmanı düzenle"
       const rows = ex.sets.map((s, si) =>
-        '<button class="set-row done" data-action="edit-set" data-w="' + esc(w.id) + '" data-ex="' + i + '" data-si="' + si + '">' +
+        '<div class="set-row done static">' +
         '<span class="set-no">' + (s.isWarmup ? 'Is' : workNo(ex.sets, si)) + '</span>' +
         '<span class="set-val' + (s.isWarmup ? ' warm' : '') + '">' + esc(L.formatSet(e.type, s)) + '</span>' +
-        (s === best ? '<span class="best-tag">en iyi</span>' : '') + (records[i][si] ? PR_BADGE : '') +
-        '<span class="edit-hint">✎</span></button>').join('');
+        (s === best ? '<span class="best-tag">en iyi</span>' : '') + (records[i][si] ? PR_BADGE : '') + '</div>').join('');
       return '<section class="card">' + exerciseTitle(e) + '<div class="sets">' +
         (rows || '<p class="muted small">Set yok</p>') + '</div></section>';
     }).join('');
-    const cardio = w.cardio.map((c, i) => cardioRow(c, i, w.id)).join('');
+    const cardio = w.cardio.map((c, i) => cardioRow(c, i, w.id, true)).join('');
     return '<header class="top"><button class="icon-btn" data-action="tab" data-v="history" aria-label="Geçmiş">‹</button>' +
       '<div class="center"><h2>' + esc(w.name) + '</h2><p class="muted small">' + esc(when) + '</p></div><span class="icon-btn"></span></header>' +
-      '<div class="detail-meta"><p class="muted small">' + esc(workoutMeta(w)) + ' · düzeltmek için bir sete dokun</p>' +
-      '<button class="mini-btn" data-action="reopen-workout" data-id="' + esc(w.id) + '">✎ Antrenmanı düzenle</button></div>' +
+      '<div class="detail-meta"><p class="muted small">' + esc(workoutMeta(w)) + '</p>' +
+      '<button class="mini-btn" data-action="reopen-workout" data-id="' + esc(w.id) + '">✎ Antrenmanı düzenle</button></div>' + kcalLine(w) +
       cards +
-      '<section class="cardio-section"><p class="section-label">Kardiyo</p>' + cardio + cardioTotalLine(w.cardio) +
-      '<button class="ghost-btn" data-action="add-cardio" data-w="' + esc(w.id) + '">+ Kardiyo ekle</button></section>' +
+      (w.cardio.length ? '<section class="cardio-section"><p class="section-label">Kardiyo</p>' + cardio + cardioTotalLine(w.cardio) + '</section>' : '') +
       '<button class="text-btn danger" data-action="delete-workout" data-id="' + esc(w.id) + '">Bu antrenmanı sil</button>';
   }
 
@@ -611,28 +650,173 @@
       grid + line + dots + dates + hits + '</svg>' + readout + help;
   }
 
-  function cardioRow(c, i, workoutId) {
-    const def = Seed.CARDIO_TYPES.find((x) => x.id === c.type) || { name: c.type, fields: [] };
-    const type = def.name;
+  function cardioName(type) {
+    return (Seed.CARDIO_TYPES.find((x) => x.id === type) || { name: type }).name;
+  }
+
+  // Makine ayarları metni: "hız 7 km/s · eğim 5%"
+  function cardioSettingsText(c) {
+    const def = Seed.CARDIO_TYPES.find((x) => x.id === c.type) || { fields: [] };
     const st = c.settings || {};
-    const settingText = def.fields.filter((k) => st[k] !== undefined && st[k] !== null).map((k) => {
+    const list = def.fields.filter((k) => st[k] !== undefined && st[k] !== null).map((k) => {
       const f = Seed.CARDIO_FIELDS[k];
       return f.label.toLocaleLowerCase('tr') + ' ' + L.fmtNum(st[k]) + (f.unit === '%' ? '%' : f.unit ? ' ' + f.unit : '');
     });
-    const extra = [c.distanceKm ? L.fmtNum(c.distanceKm) + ' km' : '', c.calories ? c.calories + ' kcal' : '']
-      .concat(settingText, !settingText.length && c.difficulty ? ['zorluk ' + c.difficulty + '/10'] : [])
-      .filter(Boolean).join(' · ');
-    return '<button class="row-btn" data-action="edit-cardio" data-i="' + i + '"' + (workoutId ? ' data-w="' + esc(workoutId) + '"' : '') + '><b>' +
-      esc(type) + '</b> ' + c.minutes + ' dk' + (extra ? ' <span class="muted">· ' + esc(extra) + '</span>' : '') + '</button>';
+    if (!list.length && c.difficulty) list.push('zorluk ' + c.difficulty + '/10');
+    return list;
+  }
+
+  function kcalText(c) {
+    return c.calories > 0 ? (c.caloriesEstimated ? '~' : '') + c.calories + ' kcal' + (c.caloriesEstimated ? ' (tahmini)' : '') : '';
+  }
+
+  // readonly: Geçmiş detayında (düzenleme modu dışında) dokunulamaz satır
+  function cardioRow(c, i, workoutId, readonly) {
+    const extra = [c.distanceKm ? L.fmtNum(c.distanceKm) + ' km' : '', kcalText(c)]
+      .concat(cardioSettingsText(c)).filter(Boolean).join(' · ');
+    const missing = c.calories > 0 ? '' : ' <span class="kcal-missing">kalori yok</span>';
+    const inner = '<b>' + esc(cardioName(c.type)) + '</b> ' + c.minutes + ' dk' + (extra ? ' <span class="muted">· ' + esc(extra) + '</span>' : '') + missing;
+    if (readonly) return '<div class="row-btn static">' + inner + '</div>';
+    return '<button class="row-btn" data-action="edit-cardio" data-i="' + i + '"' + (workoutId ? ' data-w="' + esc(workoutId) + '"' : '') + '>' + inner + '</button>';
+  }
+
+  // Kardiyo panelindeki değerlerden kalori tahmini (bu kayıt hariç tüm kardiyo geçmişi)
+  function cardioFormEntry(f) {
+    const type = f.get('type') || 'other';
+    const def = Seed.CARDIO_TYPES.find((t) => t.id === type) || { fields: [] };
+    const settings = {};
+    for (const k of def.fields) {
+      const v = L.parseNum(f.get(type + '.' + k) || '');
+      if (v !== null && v >= 0) settings[k] = v;
+    }
+    return { type, minutes: parseInt(f.get('minutes'), 10) || 0, settings };
+  }
+
+  function estimateFromForm(f) {
+    const w = sheetWorkout();
+    const editing = ui.sheet && ui.sheet.i !== undefined ? w.cardio[ui.sheet.i] : null;
+    const past = state.workouts.flatMap((x) => x.cardio || []).filter((c) => c !== editing);
+    const kg = w.bodyWeight > 0 ? w.bodyWeight : L.bodyWeightAt(state.workouts, w.startedAt);
+    return L.estimateCardioCalories(cardioFormEntry(f), past, kg, state.settings.profile || {});
+  }
+
+  function estimateSource(est) {
+    return est.source === 'history' ? 'bu makinedeki benzer ' + est.basedOn + ' kaydına göre' : 'genel formülle (kilona göre)';
+  }
+
+  // ---------- Kalori ----------
+
+  // Ayarlar: kalori tahmini için profil (hepsi isteğe bağlı; kilo antrenman başında girilen değerden)
+  function profileSection() {
+    const p = state.settings.profile || {};
+    const kg = L.bodyWeightAt(state.workouts, new Date());
+    return '<section class="card"><p class="section-label">Profil (kalori tahmini için)</p>' +
+      '<form data-form="profile">' +
+      '<div class="two-col"><label class="field">Boy (cm)<input name="heightCm" inputmode="numeric" value="' + (p.heightCm || '') + '" placeholder="ör. 180"></label>' +
+      '<label class="field">Yaş<input name="age" inputmode="numeric" value="' + (p.age || '') + '" placeholder="ör. 28"></label></div>' +
+      '<div class="field">Cinsiyet<div class="chips">' + [['m', 'Erkek'], ['f', 'Kadın']].map(([v, n]) =>
+        '<label class="chip-radio"><input type="radio" name="sex" value="' + v + '"' + (p.sex === v ? ' checked' : '') + '><span>' + n + '</span></label>').join('') + '</div></div>' +
+      '<p class="muted small">Kilo: ' + (kg ? L.fmtNum(kg) + ' kg (son ölçüm)' : 'henüz yok, antrenman başında girilir') +
+      '. Boy, yaş ve cinsiyetle dinlenme metabolizman hesaplanır; ağırlık ve kardiyo kalori tahminleri buna göre yapılır.</p>' +
+      '<button type="submit" class="primary wide">Profili kaydet</button></form></section>';
+  }
+
+  function kcalGoal(kind, range) {
+    const weekly = state.settings.weeklyKcalGoal || 2000;
+    return kind === 'week' ? weekly : Math.round(weekly * Math.round((range.end - range.start) / 86400000) / 7 / 10) * 10;
+  }
+
+  function fmtKcal(n) { return Math.round(n).toLocaleString('tr-TR'); }
+
+  // Özet'teki kalori kutusu (dokununca grafik paneli açılır)
+  function kcalTile(kind, ref, group, sum) {
+    const cs = L.calorieSeries(state, kind, ref, group);
+    const parts = ['ağırlık ~' + fmtKcal(cs.strength), 'kardiyo ' + fmtKcal(cs.cardio)];
+    if (sum.cardio.distanceKm) parts.push(L.fmtNum(sum.cardio.distanceKm) + ' km');
+    return '<button class="tile tile-btn wide" data-action="kcal-chart">' +
+      '<span class="tile-row"><b>~' + fmtKcal(cs.total) + '</b><span class="chev">Grafik ›</span></span>' +
+      '<span>kcal yakıldı · hedef ' + fmtKcal(kcalGoal(kind, cs.range)) + '</span><em>' + esc(parts.join(' · ')) + '</em></button>';
+  }
+
+  // Antrenmanın kalori satırı (bitiş ekranı, Geçmiş detayı)
+  function kcalLine(w) {
+    const c = L.workoutCalories(state, w);
+    const parts = [];
+    if (c.strength) parts.push('ağırlık ~' + fmtKcal(c.strength) + ' (tahmini)');
+    if (c.cardioEntries) parts.push('kardiyo ' + fmtKcal(c.cardio) + (c.cardioMissing ? ' · ' + c.cardioMissing + ' kayıtta kalori yok' : ''));
+    if (!c.total) {
+      const why = [c.strength === null && w.exercises.some((e) => e.sets.length) ? 'ağırlık kalorisi için kilo kaydı gerekli' : '',
+        c.cardioMissing ? 'kardiyo kalorisi girilmedi' : ''].filter(Boolean).join(' · ');
+      return why ? '<p class="muted small kcal-line">🔥 ' + esc(why) + '</p>' : '';
+    }
+    return '<p class="kcal-line">🔥 <b>~' + fmtKcal(c.total) + ' kcal</b> <span class="muted small">' + esc(parts.join(' · ')) + '</span></p>';
+  }
+
+  // Kalori paneli: günlük sütunlar (ağırlık + kardiyo), hedefe kalan
+  function sheetKcal(s) {
+    const kind = ui.ovKind;
+    const range = L.periodRange(kind, new Date(), ui.ovOffset);
+    const cs = L.calorieSeries(state, kind, range.start, ui.ovGroup);
+    const goal = kcalGoal(kind, cs.range);
+    const left = goal - cs.total;
+    const pct = Math.min(100, Math.round((cs.total / goal) * 100));
+    const label = L.periodLabel(kind, ui.ovOffset, range);
+    const days = cs.days;
+    const W = 340, H = 170, padL = 34, padR = 6, padT = 10, padB = 22;
+    const max = Math.max(1, ...days.map((d) => d.total));
+    const niceMax = Math.ceil(max / 100) * 100;
+    const slot = (W - padL - padR) / days.length;
+    const bw = Math.max(3, Math.min(28, slot * 0.62));
+    const Y = (v) => padT + (1 - v / niceMax) * (H - padT - padB);
+    const sel = s.sel !== undefined && s.sel !== null ? s.sel : null;
+    const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+    const grid = [0, niceMax / 2, niceMax].map((v) => '<line class="grid" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '"/>' +
+      '<text class="axis" x="' + (padL - 6) + '" y="' + Y(v).toFixed(1) + '" dy="0.35em" text-anchor="end">' + fmtKcal(v) + '</text>').join('');
+    const bars = days.map((d, i) => {
+      const x = padL + slot * i + (slot - bw) / 2;
+      let out = '';
+      // Alt: ağırlık, üst: kardiyo; segmentler arasında 2px boşluk, üst uç yuvarlatılmış
+      const yS = Y(d.strength), yC = Y(d.total);
+      if (d.strength > 0) out += '<rect class="kb strength" x="' + x.toFixed(1) + '" y="' + (yS + (d.cardio > 0 ? 1 : 0)).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(1, Y(0) - yS - (d.cardio > 0 ? 1 : 0)).toFixed(1) + '" rx="' + (d.cardio > 0 ? 0 : 3) + '"/>';
+      if (d.cardio > 0) out += '<rect class="kb cardio" x="' + x.toFixed(1) + '" y="' + yC.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(1, (d.strength > 0 ? yS - 1 : Y(0)) - yC).toFixed(1) + '" rx="3"/>';
+      if (i === sel) out = '<rect class="kb-sel" x="' + (padL + slot * i + 1).toFixed(1) + '" y="' + padT + '" width="' + (slot - 2).toFixed(1) + '" height="' + (H - padT - padB) + '" rx="4"/>' + out;
+      const lbl = kind === 'week' ? dayNames[i] : ((i % 5 === 0 || i === days.length - 1) ? String(d.date.getDate()) : '');
+      if (lbl) out += '<text class="axis" x="' + (padL + slot * i + slot / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + lbl + '</text>';
+      out += '<rect class="hit" data-action="kcal-day" data-i="' + i + '" x="' + (padL + slot * i).toFixed(1) + '" y="0" width="' + slot.toFixed(1) + '" height="' + H + '"/>';
+      return out;
+    }).join('');
+    const d = sel !== null ? days[sel] : null;
+    const readout = d
+      ? '<p class="small kcal-read"><b>' + esc(L.dateTr(d.date, { noYear: true })) + ':</b> ' + (d.total ? '~' + fmtKcal(d.total) + ' kcal · ağırlık ~' + fmtKcal(d.strength) + ' · kardiyo ' + fmtKcal(d.cardio) : 'antrenman yok') + '</p>'
+      : '<p class="muted small kcal-read">Bir güne dokun, o günün kalorisini gör.</p>';
+    const notes = [];
+    if (cs.cardioMissing) notes.push(cs.cardioMissing + ' kardiyo kaydında kalori girilmedi; toplama katılmadı. Geçmiş\'te o antrenmanı açıp "Antrenmanı düzenle" ile girebilir ya da tahmin ettirebilirsin.');
+    if (cs.strengthUnknown) notes.push('Kilo kaydı olmadığı için ' + cs.strengthUnknown + ' antrenmanın ağırlık kalorisi hesaplanamadı.');
+    const p = state.settings.profile || {};
+    notes.push('Ağırlık kalorisi set sayısından tahmin edilir (set başına ~2 dk, orta-yoğun antrenman)' +
+      (p.heightCm && p.age && p.sex ? '; boy, yaş ve cinsiyetin hesaba katılıyor.' : '. Ayarlar\'a boy, yaş ve cinsiyet girersen daha isabetli olur.'));
+    return '<h3>Yakılan kalori · ' + esc(label) + '</h3>' +
+      '<p class="kcal-head"><b>~' + fmtKcal(cs.total) + '</b> <span class="muted">/ ' + fmtKcal(goal) + ' kcal hedef</span></p>' +
+      '<div class="bar" aria-label="Kalori hedefi"><i style="width:' + pct + '%"></i></div>' +
+      '<p class="small">' + (left > 0 ? 'Hedefe <b>' + fmtKcal(left) + ' kcal</b> kaldı' : 'Hedef tamam · <b>+' + fmtKcal(-left) + ' kcal</b>') + '</p>' +
+      '<div class="kcal-legend small"><span><i class="lg-sq cardio"></i>Kardiyo ' + fmtKcal(cs.cardio) + '</span>' +
+      '<span><i class="lg-sq strength"></i>Ağırlık ~' + fmtKcal(cs.strength) + ' <span class="muted">(tahmini)</span></span></div>' +
+      '<svg class="chart kcal-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Günlük kalori">' + grid + bars + '</svg>' +
+      readout +
+      notes.map((n) => '<p class="muted small kcal-note">' + esc(n) + '</p>').join('') +
+      '<div class="sheet-actions"><button class="ghost-btn" data-action="close-sheet">Kapat</button></div>';
   }
 
   // Birden çok makine girildiyse toplam satırı
   function cardioTotalLine(list) {
     if (!list || list.length < 2) return '';
     const t = L.cardioTotals(list);
+    const notes = [t.caloriesMissing ? t.caloriesMissing + ' kayıtta kalori girilmedi' : '', t.caloriesEstimated ? 'tahmini kalori dahil' : '']
+      .filter(Boolean).join(' · ');
     return '<p class="cardio-total"><span class="muted">Toplam</span> <b>' + t.minutes + ' dk</b>' +
       (t.distanceKm ? ' · <b>' + L.fmtNum(t.distanceKm) + ' km</b>' : '') +
-      (t.calories ? ' · <b>' + L.fmtNum(t.calories) + ' kcal</b>' : '') + '</p>';
+      (t.calories ? ' · <b>' + (t.caloriesEstimated ? '~' : '') + L.fmtNum(t.calories) + ' kcal</b>' : '') +
+      (notes ? '<span class="muted small cardio-note">' + esc(notes) + '</span>' : '') + '</p>';
   }
 
   // ---------- Özet ----------
@@ -663,9 +847,7 @@
       tile(sum.trainingDays, 'antrenman günü', kind === 'week' ? '7 günde' : daysInPeriod + ' günde') +
       tile(sum.totalSets, 'çalışma seti', 'ısınma hariç') +
       tile(sum.cardioMinutes, 'dk kardiyo', 'hedef ' + goal + ' dk') +
-      (sum.cardio.calories || sum.cardio.distanceKm
-        ? tile(sum.cardio.calories ? L.fmtNum(sum.cardio.calories) : '–', 'kcal kardiyo',
-          sum.cardio.distanceKm ? L.fmtNum(sum.cardio.distanceKm) + ' km' : 'mesafe girilmedi') : '') +
+      kcalTile(kind, range.start, ui.ovGroup, sum) +
       '</div>' +
       '<div class="bar" aria-label="Kardiyo hedefi"><i style="width:' + pct + '%"></i></div>' +
       '<p class="muted small">' + sum.cardioMinutes + ' / ' + goal + ' dk kardiyo</p>';
@@ -733,7 +915,7 @@
       main = '<button class="big-card resume" data-action="resume">' +
         '<span class="eyebrow">' + (w.editingEndedAt ? 'Düzenlenen antrenman' : 'Devam eden antrenman') + '</span>' +
         '<span class="big-title">' + esc(w.name) + '</span>' +
-        '<span class="muted">' + (w.editingEndedAt ? esc(L.dateTr(w.startedAt, { noYear: true })) + ' · kaydetmeyi unutma'
+        '<span class="muted">' + (w.editingEndedAt ? esc(L.dateTr(w.startedAt, { noYear: true })) + ' · kaydet ya da vazgeç'
           : minutesSince(w.startedAt) + ' dk') + ' · ' + sets + ' set</span>' +
         '<span class="cta">Devam et →</span></button>';
     } else {
@@ -806,7 +988,7 @@
     const cardio = w.cardio.map((c, i) => cardioRow(c, i, null)).join('');
 
     return '<header class="top sticky">' +
-      '<button class="icon-btn" data-action="go-home" aria-label="Ana sayfa">‹</button>' +
+      '<button class="icon-btn" data-action="' + (editing ? 'edit-exit' : 'go-home') + '" aria-label="' + (editing ? 'Düzenlemeden çık' : 'Ana sayfa') + '">‹</button>' +
       '<div class="center"><h2>' + esc(w.name) + '</h2>' + (editing
         ? '<p class="muted small">Düzenleniyor · ' + esc(L.dateTr(w.startedAt, { noYear: true })) + ' · ' + totalSets + ' set</p></div>'
         : '<p class="muted small" id="elapsed">' + minutesSince(w.startedAt) + ' dk · ' + totalSets + ' set</p></div>') +
@@ -817,7 +999,8 @@
       '<button class="ghost-btn" data-action="add-cardio">+ Kardiyo ekle</button></section>' +
       (editing
         ? '<button class="primary wide" data-action="finish">Değişiklikleri kaydet</button>' +
-          '<p class="muted small center-text">Tarih ve süre değişmez; eklediğin setler ' + esc(L.dateTr(w.startedAt, { noYear: true })) + ' kaydına girer.</p>'
+          '<button class="text-btn" data-action="edit-exit">Kaydetmeden çık</button>' +
+          '<p class="muted small center-text">Tarih ve süre değişmez; değişiklikler ' + esc(L.dateTr(w.startedAt, { noYear: true })) + ' kaydına girer.</p>'
         : '<button class="primary wide" data-action="finish">Antrenmanı bitir</button>' +
           '<button class="text-btn danger" data-action="discard">Antrenmanı sil</button>');
   }
@@ -948,7 +1131,7 @@
       return L.trend(e.type, prev ? L.bestSet(e.type, prev.sets) : null, L.bestSet(e.type, ex.sets)) === 'up';
     }).map((ex) => exercise(ex.exerciseId).name);
     return '<header class="top"><div><h1>Tebrikler 💪</h1><p class="muted">' + esc(w.name) + ' · ' + mins + ' dk' +
-      (cardioMin ? ' · ' + cardioMin + ' dk kardiyo' : '') + '</p></div></header>' +
+      (cardioMin ? ' · ' + cardioMin + ' dk kardiyo' : '') + '</p></div></header>' + kcalLine(w) +
       (w.cardio.length ? '<section class="card"><p class="section-label">Kardiyo</p>' +
         w.cardio.map((c, i) => cardioRow(c, i, w.id)).join('') + cardioTotalLine(w.cardio) + '</section>' : '') +
       (prCount ? '<div class="highlight"><p class="pr-line">🏆 Bugün ' + prCount + ' kişisel rekor kırdın</p><ul class="pr-list">' + prList.join('') + '</ul></div>' : '') +
@@ -1007,6 +1190,10 @@
       '</section>' +
       '<section class="card"><p class="section-label">Haftalık kardiyo hedefi</p>' +
       stepperPlain('goal', state.settings.weeklyCardioGoal, 'dk') + '</section>' +
+      '<section class="card"><p class="section-label">Haftalık kalori hedefi</p>' +
+      '<p class="muted small">Antrenmanla yakılan (ağırlık + kardiyo). Özet\'teki kalori grafiğinde hedefe kalanı gösterir.</p>' +
+      stepperPlain('kcal-goal', state.settings.weeklyKcalGoal || 2000, 'kcal') + '</section>' +
+      profileSection() +
       daySections +
       '<button class="ghost-btn new-day" data-action="day-new">+ Yeni gün ekle <span class="muted small">(ör. Legs)</span></button>' +
       otherSection +
@@ -1035,6 +1222,7 @@
     else if (s.type === 'cardio') body = sheetCardio(s);
     else if (s.type === 'add-exercise') body = sheetAddExercise();
     else if (s.type === 'add-to-template') body = sheetAddToTemplate(s);
+    else if (s.type === 'kcal') body = sheetKcal(s);
     else if (s.type === 'day') body = sheetDay(s);
     else if (s.type === 'exercise-menu') body = sheetExerciseMenu(s);
     else if (s.type === 'bodyweight') body = sheetBodyWeight(s);
@@ -1044,7 +1232,7 @@
   function sheetExercise(s) {
     const e = s.id ? exercise(s.id) : { name: '', type: 'weighted', weightStep: 2.5, machineSetting: '', repMin: 8, repMax: 12 };
     const rr = L.repRange(e);
-    const types = [['weighted', 'Ağırlık × tekrar'], ['bodyweight', 'Vücut ağırlığı'], ['timed', 'Süreli (plank vb.)']];
+    const types = [['weighted', 'Ağırlık × tekrar'], ['bodyweight', 'Vücut ağırlığı'], ['timed', 'Süre']];
     // Yeni harekette hangi güne (Push / Pull) ekleneceği seçilir
     const days = state.templates.filter((t) => t.kind === 'strength');
     const dayField = s.id ? '' : s.addToWorkout
@@ -1117,8 +1305,15 @@
     }).join('');
     const legacy = existing && existing.difficulty > 0 && !(existing.settings && existing.settings.level > 0)
       ? '<p class="muted small">Eski kayıt: zorluk ' + existing.difficulty + '/10</p>' : '';
+    const last = L.lastCardioSession(state.workouts, w.id, w.startedAt);
+    const lastBox = last
+      ? '<div class="last-cardio"><p class="muted small">Geçen kardiyo · ' + esc(L.dateTr(last.startedAt, { noYear: true })) + '</p>' +
+        last.cardio.map((c) => '<p class="small"><b>' + esc(cardioName(c.type)) + '</b> ' + c.minutes + ' dk' +
+          [kcalText(c)].concat(cardioSettingsText(c)).filter(Boolean).map((x) => ' · ' + esc(x)).join('') + '</p>').join('') + '</div>'
+      : '';
+    const estimated = !!(existing && existing.caloriesEstimated);
     return '<form data-form="cardio">' +
-      '<h3>' + (existing ? 'Kardiyoyu düzenle' : 'Kardiyo ekle') + '</h3>' +
+      '<h3>' + (existing ? 'Kardiyoyu düzenle' : 'Kardiyo ekle') + '</h3>' + lastBox +
       '<div class="field">Makine<div class="chips">' + Seed.CARDIO_TYPES.map((c) =>
         '<label class="chip-radio"><input type="radio" name="type" value="' + c.id + '"' + (c.id === lastType ? ' checked' : '') + '><span>' + esc(c.name) + '</span></label>').join('') +
       '</div></div>' +
@@ -1132,6 +1327,9 @@
       '<label class="field">Mesafe (km)<input name="distanceKm" inputmode="decimal" placeholder="isteğe bağlı" value="' + (existing && existing.distanceKm ? esc(L.fmtNum(existing.distanceKm)) : '') + '"></label>' +
       '<label class="field">Kalori (kcal)<input name="calories" inputmode="numeric" placeholder="makinedeki" value="' + (existing && existing.calories ? esc(existing.calories) : '') + '"></label>' +
       '</div>' +
+      '<input type="hidden" name="caloriesEstimated" value="' + (estimated ? '1' : '') + '">' +
+      '<div class="kcal-est"><button type="button" class="mini-btn" data-action="cardio-estimate">Kaloriyi tahmin et</button>' +
+      '<span class="muted small" id="kcal-est-note">' + (estimated ? 'Bu değer tahmini. Makinedeki değeri yazarsan o kullanılır.' : 'Makineden göremediysen geçmiş kayıtlarına göre tahmin edilir.') + '</span></div>' +
       '<div class="sheet-actions">' + (existing ? '<button type="button" class="ghost-btn danger" data-action="delete-cardio">Sil</button>'
         : '<button type="button" class="ghost-btn" data-action="close-sheet">Vazgeç</button>') +
       '<button type="submit" class="primary">Kaydet</button></div></form>';
@@ -1349,6 +1547,7 @@
       window.scrollTo(0, 0);
     },
     // Bitmiş antrenmanı kayıt ekranında yeniden aç (hareket/set eklemek için). Bitiş zamanı saklanır, kaydedince geri konur.
+    'edit-exit': () => leaveEditing('exit'),
     'reopen-workout': async (el) => {
       const w = state.workouts.find((x) => x.id === el.dataset.id);
       const cur = activeWorkout();
@@ -1358,6 +1557,8 @@
         return;
       }
       w.editingEndedAt = w.endedAt;
+      // Değişiklikleri göstermek ve gerekirse geri almak için düzenleme başındaki hali
+      w.editingSnapshot = JSON.parse(JSON.stringify({ exercises: w.exercises, cardio: w.cardio }));
       w.endedAt = null;
       state.activeWorkoutId = w.id;
       persist();
@@ -1499,6 +1700,17 @@
       closeSheet();
       render();
     },
+    'kcal-chart': () => openSheet({ type: 'kcal', sel: null }),
+    'kcal-day': (el) => { ui.sheet.sel = Number(el.dataset.i); renderSheet(); },
+    'cardio-estimate': () => {
+      const form = $sheet.querySelector('form[data-form="cardio"]');
+      const est = estimateFromForm(new FormData(form));
+      const note = $sheet.querySelector('#kcal-est-note');
+      if (!est) { note.textContent = 'Tahmin için kilo kaydı ya da bu makinede kalorili bir kayıt gerekli.'; return; }
+      form.querySelector('input[name="calories"]').value = est.kcal;
+      form.querySelector('input[name="caloriesEstimated"]').value = '1';
+      note.textContent = '~' + est.kcal + ' kcal tahmini · ' + estimateSource(est) + '. Makinedeki değeri yazarsan o kullanılır.';
+    },
     'cf-step': (el) => {
       const input = $sheet.querySelector('input[name="' + el.dataset.name + '"]');
       const cur = L.parseNum(input.value);
@@ -1516,6 +1728,12 @@
     'close-sheet': () => closeSheet(),
     'export': exportBackup,
     'plain-step': (el) => {
+      if (el.dataset.field === 'kcal-goal') {
+        state.settings.weeklyKcalGoal = Math.max(100, (state.settings.weeklyKcalGoal || 2000) + 100 * Number(el.dataset.dir));
+        persist();
+        render();
+        return;
+      }
       if (el.dataset.field === 'goal') {
         state.settings.weeklyCardioGoal = Math.max(10, (state.settings.weeklyCardioGoal || 150) + 10 * Number(el.dataset.dir));
         persist();
@@ -1561,6 +1779,10 @@
   }
 
   document.addEventListener('input', (ev) => {
+    if (ev.target.name === 'calories') {
+      const flag = ev.target.form && ev.target.form.querySelector('input[name="caloriesEstimated"]');
+      if (flag) flag.value = '';
+    }
     if (isDraftInput(ev.target)) readDraftInput(ev.target);
   });
 
@@ -1693,44 +1915,68 @@
       return;
     }
 
-    if (kind === 'cardio') {
-      const minutes = parseInt(f.get('minutes'), 10);
-      if (!(minutes > 0)) { toast('Süre girmelisin'); return; }
-      const w = sheetWorkout();
-      const type = f.get('type') || 'other';
-      const def = Seed.CARDIO_TYPES.find((t) => t.id === type) || { fields: [] };
-      const settings = {};
-      for (const k of def.fields) {
-        const v = L.parseNum(f.get(type + '.' + k) || '');
-        if (v !== null && v >= 0) settings[k] = v;
-      }
-      const kcal = parseInt(f.get('calories'), 10);
-      const entry = {
-        id: Store.uid('c'),
-        type,
-        minutes,
-        distanceKm: L.parseNum(f.get('distanceKm') || '') || null,
-        calories: kcal > 0 ? kcal : null,
-        settings,
-        avgHr: null,
-      };
-      if (ui.sheet.i !== undefined) {
-        const old = w.cardio[ui.sheet.i];
-        entry.id = old.id;
-        if (old.difficulty) entry.difficulty = old.difficulty; // eski kayıttaki değer kaybolmasın
-        w.cardio[ui.sheet.i] = entry;
-      } else {
-        w.cardio.push(entry);
-      }
-      state.settings.lastCardioType = entry.type;
-      state.settings.lastCardioMinutes = entry.minutes;
-      state.settings.lastCardioSettings = Object.assign({}, state.settings.lastCardioSettings, { [type]: settings });
+    if (kind === 'cardio') saveCardio(f);
+
+    if (kind === 'profile') {
+      const h = parseInt(f.get('heightCm'), 10);
+      const a = parseInt(f.get('age'), 10);
+      if (f.get('heightCm') && !(h >= 100 && h <= 250)) { toast('Boy 100–250 cm arası olmalı'); return; }
+      if (f.get('age') && !(a >= 10 && a <= 100)) { toast('Yaş 10–100 arası olmalı'); return; }
+      state.settings.profile = { heightCm: h || null, age: a || null, sex: f.get('sex') || null };
       persist();
-      closeSheet();
       render();
-      toast('Kardiyo kaydedildi');
+      toast('Profil kaydedildi');
     }
   });
+
+  async function saveCardio(f) {
+    const minutes = parseInt(f.get('minutes'), 10);
+    if (!(minutes > 0)) { toast('Süre girmelisin'); return; }
+    const w = sheetWorkout();
+    const base = cardioFormEntry(f);
+    let kcal = parseInt(f.get('calories'), 10);
+    let estimated = kcal > 0 && f.get('caloriesEstimated') === '1';
+    // Kalori isteğe bağlı ama boşsa hatırlat; tahmin varsa onu öner
+    if (!(kcal > 0)) {
+      const est = estimateFromForm(f);
+      const r = await ask(est
+        ? { title: 'Kalori girmedin', message: 'Makinedeki değeri girebilirsin ya da tahmini kullanabilirsin (' + estimateSource(est) + '). Sonradan düzeltebilirsin.',
+          ok: 'Tahmini kullan (~' + est.kcal + ' kcal)', alt: 'Geri dön, gireyim', cancel: 'Boş bırak' }
+        : { title: 'Kalori girmedin', message: 'Kalorisiz kaydedilecek; sonradan bu kayda dokunup ekleyebilirsin.',
+          ok: 'Boş kaydet', cancel: 'Geri dön, gireyim' });
+      if (r === 'alt' || (!est && r !== true)) {
+        const input = $sheet.querySelector('input[name="calories"]');
+        if (input) input.focus();
+        return;
+      }
+      if (r === true && est) { kcal = est.kcal; estimated = true; }
+    }
+    const entry = {
+      id: Store.uid('c'),
+      type: base.type,
+      minutes,
+      distanceKm: L.parseNum(f.get('distanceKm') || '') || null,
+      calories: kcal > 0 ? kcal : null,
+      caloriesEstimated: kcal > 0 && estimated ? true : undefined,
+      settings: base.settings,
+      avgHr: null,
+    };
+    if (ui.sheet.i !== undefined) {
+      const old = w.cardio[ui.sheet.i];
+      entry.id = old.id;
+      if (old.difficulty) entry.difficulty = old.difficulty; // eski kayıttaki değer kaybolmasın
+      w.cardio[ui.sheet.i] = entry;
+    } else {
+      w.cardio.push(entry);
+    }
+    state.settings.lastCardioType = entry.type;
+    state.settings.lastCardioMinutes = entry.minutes;
+    state.settings.lastCardioSettings = Object.assign({}, state.settings.lastCardioSettings, { [entry.type]: entry.settings });
+    persist();
+    closeSheet();
+    render();
+    toast('Kardiyo kaydedildi');
+  }
 
   // ---------- Yedekleme ----------
 
