@@ -11,7 +11,7 @@
   'use strict';
 
   const KEY = 'progressive.data';
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   function uid(prefix) {
     return (prefix || 'id') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -54,6 +54,21 @@
         if (!(ex.repMax > ex.repMin)) ex.repMax = d ? d.repMax : (ex.type === 'bodyweight' ? 15 : 12);
       }
       state.schemaVersion = 2;
+    }
+    // v3: kardiyoda 1–10 "zorluk" yerine makineye özel ayarlar (hız, eğim, seviye) ve kalori.
+    // Seviye soran makinelerde eski zorluk seviyeye taşınır; eski alan silinmez (veri kaybı yok).
+    if (state.schemaVersion < 3) {
+      const types = {};
+      for (const t of Seed.CARDIO_TYPES) types[t.id] = t;
+      for (const w of state.workouts) {
+        for (const c of w.cardio || []) {
+          if (!c.settings) c.settings = {};
+          if (c.calories === undefined) c.calories = null;
+          const t = types[c.type];
+          if (c.difficulty > 0 && t && t.fields.includes('level') && !(c.settings.level > 0)) c.settings.level = c.difficulty;
+        }
+      }
+      state.schemaVersion = 3;
     }
     return state;
   }

@@ -12,6 +12,7 @@
   // type: 'weighted' (ağırlık × tekrar) | 'bodyweight' (tekrar, ağırlık = ek yük) |
   //       'assisted' (ağırlık = karşı/destek ağırlığı, azalması ilerlemedir)
   // repMin / repMax: çift ilerleme için tekrar aralığı (hedef önerisi). Ayarlar'dan değiştirilebilir.
+  // 'timed' (plank vb.): set.seconds = süre, weight = ek ağırlık; timeStep = süre adımı (sn), hedef her seferinde +timeStep.
   // primaryMuscles / secondaryMuscles: şimdilik arayüzde kullanılmıyor (ileride hacim hesabı için).
   const EXERCISES = [
     { id: 'chest-press', repMin: 6, repMax: 10, name: 'Chest press', type: 'weighted', weightStep: 2.5,
@@ -57,14 +58,24 @@
     { id: 'cardio', name: 'Sadece kardiyo', kind: 'cardio', items: [] },
   ];
 
+  // Kardiyo makineleri ve her birinde sorulan ayarlar (hepsinde ayrıca süre, mesafe, kalori var).
+  // Ayarlar kayıtta cardio.settings içinde: { speed, incline, level, setting }. Üst sınır yok.
+  const CARDIO_FIELDS = {
+    // start: alan boşken −/+ ilk dokunuşta gelinen başlangıç değeri
+    speed: { label: 'Hız', unit: 'km/s', step: 0.5, decimal: true, start: 6 },
+    incline: { label: 'Eğim', unit: '%', step: 0.5, decimal: true, start: 1 },
+    level: { label: 'Seviye', unit: '', step: 1, decimal: false, start: 5 },
+    setting: { label: 'Ayar', unit: '', step: 1, decimal: true, start: 1 },
+  };
+
   const CARDIO_TYPES = [
-    { id: 'treadmill', name: 'Koşu bandı' },
-    { id: 'bike', name: 'Bisiklet' },
-    { id: 'elliptical', name: 'Eliptik' },
-    { id: 'rower', name: 'Kürek' },
-    { id: 'stairs', name: 'Merdiven' },
-    { id: 'walk', name: 'Yürüyüş' },
-    { id: 'other', name: 'Diğer' },
+    { id: 'treadmill', name: 'Koşu bandı', fields: ['speed', 'incline'] },
+    { id: 'bike', name: 'Bisiklet', fields: ['level'] },
+    { id: 'elliptical', name: 'Eliptik', fields: ['level', 'speed'] },
+    { id: 'rower', name: 'Kürek', fields: ['level'] },
+    { id: 'stairs', name: 'Merdiven', fields: ['level'] },
+    { id: 'walk', name: 'Yürüyüş', fields: ['speed'] },
+    { id: 'other', name: 'Diğer', fields: ['setting'] },
   ];
 
   // 1 Kasım 2026 Push antrenmanı (kullanıcının ilk kaydı). Dips 2. set bilinmiyor.
@@ -104,5 +115,5 @@
     }];
   }
 
-  return { EXERCISES, TEMPLATES, CARDIO_TYPES, seedWorkouts };
+  return { EXERCISES, TEMPLATES, CARDIO_TYPES, CARDIO_FIELDS, seedWorkouts };
 });

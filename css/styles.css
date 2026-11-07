@@ -462,3 +462,50 @@ button.prog-row:last-child { border-bottom: 0; }
 .mode-example { margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line); }
 .mode-example ol { margin: 6px 0 0; padding-left: 0; list-style: none; }
 .mode-example li { padding: 3px 0; font-size: 14px; }
+
+/* ---------- v16: süreli hareket, kronometre ---------- */
+.stopwatch {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px;
+  margin: 2px 0 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid transparent;
+}
+.stopwatch .sw-time { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stopwatch .sw-hint { grid-column: 1; }
+.stopwatch .sw-btn {
+  grid-column: 2; grid-row: 1 / span 2; min-width: 112px; min-height: 52px; border-radius: 12px; border: 0; cursor: pointer;
+  font: inherit; font-weight: 700; background: var(--accent); color: var(--accent-ink);
+}
+.stopwatch .sw-btn.stop { background: var(--text); color: var(--bg); }
+.stopwatch.running { border-color: var(--line); }
+.stopwatch.reached { border-color: var(--accent); }
+.stopwatch.reached .sw-time { color: var(--accent); }
+
+/* Hareket paneli: tipe göre alanlar (Tip seçimi değişince anında) */
+.only-timed, .only-timed-inline, .only-bw { display: none; }
+.sheet form:has(input[name="type"][value="timed"]:checked) .only-timed { display: block; }
+.sheet form:has(input[name="type"][value="timed"]:checked) .only-timed-inline { display: inline; }
+.sheet form:has(input[name="type"][value="timed"]:checked) .only-reps,
+.sheet form:has(input[name="type"][value="timed"]:checked) .only-reps-inline { display: none; }
+.sheet form:has(input[name="type"][value="bodyweight"]:checked) .only-bw { display: block; }
+.only-timed .muted { display: block; margin-top: 4px; }
+
+/* ---------- v16: kardiyo makine ayarları ---------- */
+.cf-group { display: none; }
+.sheet form:has(input[name="type"][value="treadmill"]:checked) .cf-group[data-type="treadmill"],
+.sheet form:has(input[name="type"][value="bike"]:checked) .cf-group[data-type="bike"],
+.sheet form:has(input[name="type"][value="elliptical"]:checked) .cf-group[data-type="elliptical"],
+.sheet form:has(input[name="type"][value="rower"]:checked) .cf-group[data-type="rower"],
+.sheet form:has(input[name="type"][value="stairs"]:checked) .cf-group[data-type="stairs"],
+.sheet form:has(input[name="type"][value="walk"]:checked) .cf-group[data-type="walk"],
+.sheet form:has(input[name="type"][value="other"]:checked) .cf-group[data-type="other"] { display: block; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cardio-total { margin: 6px 2px 10px; font-size: 15px; }
+.two-col > * { min-width: 0; }
+.two-col input { width: 100%; box-sizing: border-box; }
+.cf-hint { margin: -2px 0 10px; }
+.detail-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; }
+.detail-meta p { margin: 0; }
+.mini-btn {
+  min-height: 34px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+  color: var(--text); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.center-text { text-align: center; margin-top: 6px; }

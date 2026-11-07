@@ -29,8 +29,18 @@
     return isNaN(v) ? null : v;
   }
 
+  // 45 -> "45 sn", 90 -> "1:30 dk"
+  function fmtDuration(sec) {
+    const n = Math.max(0, Math.round(Number(sec) || 0));
+    if (n < 60) return n + ' sn';
+    return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0') + ' dk';
+  }
+
   function formatSet(type, set) {
     if (!set) return '–';
+    if (type === 'timed') {
+      return (set.weight > 0 ? '+' + fmtNum(set.weight) + ' kg · ' : '') + fmtDuration(set.seconds);
+    }
     const reps = set.reps;
     if (type === 'bodyweight') {
       return (set.weight > 0 ? 'VA+' + fmtNum(set.weight) : 'VA') + '×' + reps;
@@ -59,13 +69,15 @@
   }
 
   function isWorkingSet(set) {
-    return !!set && !set.isWarmup && set.reps > 0;
+    return !!set && !set.isWarmup && (set.reps > 0 || set.seconds > 0);
   }
 
   // Karşılaştırma için skor dizisi (sözlük sırasıyla büyük olan daha iyi).
   function setScore(type, set) {
     // Vücut ağırlığı: asıl ölçüt tekrar; tekrar eşitse ek ağırlık. O günkü kilo karşılaştırmaya girmez.
     if (type === 'bodyweight') return [set.reps, set.weight || 0];
+    // Süreli (plank vb.): asıl ölçüt süre; eşitse ek ağırlık
+    if (type === 'timed') return [set.seconds || 0, set.weight || 0];
     if (type === 'assisted') return [-(set.weight || 0), set.reps];
     return [e1rm(set.weight, set.reps), set.reps];
   }
@@ -114,12 +126,27 @@
     return { min, max };
   }
 
+  function timeStepOf(ex) {
+    return ex && ex.timeStep > 0 ? ex.timeStep : 5;
+  }
+
+  // Taslak (giriş kutuları) için setin değerleri
+  function draftOf(s) {
+    return s.seconds > 0 ? { weight: s.weight || 0, seconds: s.seconds } : { weight: s.weight || 0, reps: s.reps };
+  }
+
   // Geçen seferin aynı sıradaki setine göre bu setin hedefi:
   // tekrar aralığının tepesine ulaşılmadıysa +1 tekrar, ulaşıldıysa +1 ağırlık adımı ve aralığın alt ucu.
   // Vücut ağırlığında hep +1 tekrar.
   function nextTarget(ex, prev) {
-    if (!prev || prev.isWarmup || !(prev.reps > 0)) return null;
+    if (!prev || prev.isWarmup) return null;
     const type = ex ? ex.type : 'weighted';
+    // Süreli: geçen seferki süre + süre adımı, ek ağırlık aynı
+    if (type === 'timed') {
+      if (!(prev.seconds > 0)) return null;
+      return { weight: prev.weight || 0, seconds: prev.seconds + timeStepOf(ex), kind: 'time' };
+    }
+    if (!(prev.reps > 0)) return null;
     if (type === 'bodyweight' || type === 'assisted') {
       return { weight: prev.weight || 0, reps: prev.reps + 1, kind: 'reps' };
     }
@@ -152,7 +179,7 @@
       if (!working.length) {
         const ref = bestSet(type, prev);
         const target = nextTarget(ex, ref);
-        return { role: 'top', target, ref, draft: target ? { weight: target.weight, reps: target.reps } : null };
+        return { role: 'top', target, ref, draft: target ? draftOf(target) : null };
       }
       const top = working[0];
       const last = working[working.length - 1];
@@ -160,16 +187,16 @@
       // (düşüş seti hiçbir zaman bir önceki setten ağır önerilmez)
       const p = prev.filter(isWorkingSet)[working.length];
       const base = p && p.weight <= last.weight ? p : last;
-      const lighter = type === 'bodyweight' || type === 'assisted' ? null
+      const lighter = type !== 'weighted' ? null
         : Math.max(0, Math.floor((top.weight * 0.925) / (ex.weightStep || 2.5)) * (ex.weightStep || 2.5));
-      return { role: 'backoff', target: null, ref: top, draft: { weight: base.weight, reps: base.reps }, lighter };
+      return { role: 'backoff', target: null, ref: top, draft: draftOf(base), lighter };
     }
     const n = o.mode === 'last1' ? 1 : 2;
     const i = cur.filter(isWorkingSet).length;          // ısınmalar sayılmaz
     const ref = prev.filter(isWorkingSet)[i] || null;
     if (isTargetSet(i, o.plannedSets, n)) {
       const target = nextTarget(ex, ref);
-      return { role: 'target', target, ref, draft: target ? { weight: target.weight, reps: target.reps } : null };
+      return { role: 'target', target, ref, draft: target ? draftOf(target) : null };
     }
     return { role: 'prep', target: null, ref: ref && !ref.isWarmup ? ref : null, draft: null };
   }
@@ -214,7 +241,7 @@
       if (!runningBest || compareSets(type, best, runningBest) > 0) runningBest = best;
       sessions.push({
         workoutId: w.id, workoutName: w.name, date: w.startedAt,
-        sets: sets.filter((s) => s.reps > 0), best, score: sessionScore(type, sets), isPR,
+        sets: sets.filter((s) => s.reps > 0 || s.seconds > 0), best, score: sessionScore(type, sets), isPR,
       });
     }
     const first = sessions[0] || null;
@@ -240,8 +267,10 @@
   }
 
   // Bu hareketin en son yapıldığı (başka) antrenman ve setleri.
-  function lastPerformance(workouts, exerciseId, excludeWorkoutId) {
-    const sorted = (workouts || []).filter((w) => w.id !== excludeWorkoutId).sort(byStartDesc);
+  // before verilirse yalnızca o andan önce başlamış antrenmanlar (geçmiş bir antrenmanı düzenlerken).
+  function lastPerformance(workouts, exerciseId, excludeWorkoutId, before) {
+    const t = before ? new Date(before) : null;
+    const sorted = (workouts || []).filter((w) => w.id !== excludeWorkoutId && (!t || new Date(w.startedAt) < t)).sort(byStartDesc);
     for (const w of sorted) {
       const ex = (w.exercises || []).find((e) => e.exerciseId === exerciseId);
       if (ex && ex.sets && ex.sets.length) return { workout: w, sets: ex.sets };
@@ -254,11 +283,13 @@
   function prefill(prevSets, currentSets, index, exercise) {
     const prev = prevSets || [];
     const cur = currentSets || [];
-    const pick = (s, warm) => ({ weight: s.weight, reps: s.reps, isWarmup: !!warm });
+    const pick = (s, warm) => Object.assign(draftOf(s), { isWarmup: !!warm });
     if (prev[index]) return pick(prev[index], prev[index].isWarmup);
     if (cur.length) return pick(cur[cur.length - 1], false);
     if (prev.length) return pick(prev[prev.length - 1], false);
-    return { weight: 0, reps: exercise && exercise.type === 'weighted' ? 8 : 10, isWarmup: false };
+    const type = exercise && exercise.type;
+    if (type === 'timed') return { weight: 0, seconds: 30, isWarmup: false };
+    return { weight: 0, reps: type === 'weighted' ? 8 : 10, isWarmup: false };
   }
 
   // ---------- Dönemler ve genel bakış ----------
@@ -296,16 +327,27 @@
     return (w.cardio || []).reduce((t, c) => t + (Number(c.minutes) || 0), 0);
   }
 
+  // Birden çok makinenin toplamı. Mesafe/kalori girilmeyen kayıtlar toplama katılmaz;
+  // hiç girilmediyse null (arayüzde gösterilmez).
+  function cardioTotals(list) {
+    const sum = (key) => {
+      const vals = (list || []).map((c) => Number(c[key])).filter((v) => v > 0);
+      return vals.length ? Math.round(vals.reduce((t, v) => t + v, 0) * 100) / 100 : null;
+    };
+    return { count: (list || []).length, minutes: sum('minutes') || 0, distanceKm: sum('distanceKm'), calories: sum('calories') };
+  }
+
   // Bir antrenmandaki hareketin "güç puanı" = o antrenmandaki en iyi setinin değeri.
   // Ağırlıklı: tahmini 1RM (kg). Vücut ağırlığı: tekrar. Destekli: destek ağırlığı (az olan iyi).
   function metricOf(type) {
-    return type === 'bodyweight' ? 'reps' : type === 'assisted' ? 'assist' : 'e1rm';
+    return type === 'bodyweight' ? 'reps' : type === 'assisted' ? 'assist' : type === 'timed' ? 'seconds' : 'e1rm';
   }
 
   function sessionScore(type, sets) {
     const b = bestSet(type, sets);
     if (!b) return null;
     if (type === 'bodyweight') return b.reps;
+    if (type === 'timed') return b.seconds;
     if (type === 'assisted') return b.weight || 0;
     return e1rm(b.weight, b.reps);
   }
@@ -316,7 +358,8 @@
     if (cur === null || cur === undefined) return null;
     if (prev === null || prev === undefined) return 'new';
     const diff = metric === 'assist' ? prev - cur : cur - prev;
-    const same = metric === 'e1rm' ? Math.abs(diff) < prev * 0.005 : Math.abs(diff) < 0.1 - EPS;
+    const same = metric === 'e1rm' ? Math.abs(diff) < prev * 0.005
+      : metric === 'seconds' ? Math.abs(diff) < 0.5 - EPS : Math.abs(diff) < 0.1 - EPS;
     return same ? 'same' : diff > 0 ? 'up' : 'down';
   }
 
@@ -405,6 +448,7 @@
       strengthCount: cur.filter(hasStrengthSets).length,
       cardioOnlyCount: cur.filter((w) => !hasStrengthSets(w) && cardioMinutes(w) > 0).length,
       cardioMinutes: cur.reduce((t, w) => t + cardioMinutes(w), 0),
+      cardio: cardioTotals(cur.flatMap((w) => w.cardio || [])),
       totalSets: cur.reduce((t, w) => t + workingSetCount(w), 0),
       trainingDays: new Set(cur.map((w) => dayKey(w.startedAt))).size,
       days,
@@ -429,6 +473,7 @@
       exercises: (w.exercises || []).filter((e) => (e.sets || []).some(isWorkingSet)).length,
       sets: workingSetCount(w),
       cardioMinutes: cardioMinutes(w),
+      calories: cardioTotals(w.cardio).calories,
       durationMin: w.endedAt ? Math.max(0, Math.round((new Date(w.endedAt) - new Date(w.startedAt)) / 60000)) : null,
     };
   }
@@ -534,6 +579,7 @@
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,
     metricOf, sessionScore, compareAverages, workoutGroups, inGroup,
+    fmtDuration, timeStepOf, cardioTotals,
     repRange, nextTarget, isTargetSet, setPlan, priorBest, recordFlags, exerciseHistory,
   };
 });
