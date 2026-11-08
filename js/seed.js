@@ -152,6 +152,7 @@
   // Sürüm notları (v21): yeni sürüm gelince açılışta bir kez gösterilir (settings.lastSeenVersion).
   // Kullanıcıya dönük, kısa; en yeni üstte. Yeni sürümde buraya bir satır ekle.
   const CHANGELOG = [
+    { v: 26, items: ['Yeni kullanıcılar için kısa karşılama ve ekranlarda bir kez çıkan 💡 ipuçları. Ayarlar → İpuçlarını yeniden göster ile sen de görebilirsin.'] },
     { v: 25, items: ['Ana ekrana ekleme sayfasında "Zaten ekledim" butonu; Android\'de de iPhone\'daki gibi adım adım anlatım.'] },
     { v: 24, items: ['Ana ekrana ekleme adımlarına "bu sayfayı kapat, simgeden aç" eklendi; Android açıklaması netleşti.', 'Kayıtların telefonda kalıcı tutulması için depolama izni isteniyor.'] },
     { v: 23, items: ['İlk kurulumda ana ekrana ekleme artık ayrı bir adım; başlangıç ekranında kısa özeti var.'] },

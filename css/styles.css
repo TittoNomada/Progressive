@@ -580,3 +580,18 @@ button.prog-row:last-child { border-bottom: 0; }
 .welcome .install-box { border: 0; padding: 0; margin: 12px 0; }
 .welcome .install-box .ins-title { display: none; }
 .wl-after { margin: 14px 0 0; padding: 12px; border-radius: 12px; border: 1px solid var(--accent); font-size: 15px; }
+
+/* ---------- v26: ipuçları ---------- */
+.tip {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: start;
+  margin: 0 0 12px; padding: 12px 14px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--accent);
+}
+.tip-ic { font-size: 18px; line-height: 1.3; }
+.tip-text { font-size: 15px; line-height: 1.4; }
+.tip-ok {
+  grid-column: 2; justify-self: start; min-height: 36px; padding: 6px 14px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 700; font-size: 14px;
+}
+details.ins-why summary { cursor: pointer; list-style: revert; }
+details.ins-why[open] summary { margin-bottom: 4px; }

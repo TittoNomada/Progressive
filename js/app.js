@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 25;
+  const APP_VERSION = 26;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -438,6 +438,12 @@
   }
 
   function renderView() {
+    const html = renderViewInner();
+    const screenTip = { home: 'home', history: 'history', overview: 'overview', exercise: 'exercise', settings: 'settings', summary: 'summary' }[ui.view];
+    return screenTip ? withScreenTip(html, screenTip) : html;
+  }
+
+  function renderViewInner() {
     return ui.view === 'welcome' ? renderWelcome()
       : ui.view === 'workout' ? renderWorkout()
       : ui.view === 'summary' ? renderSummary()
@@ -743,7 +749,7 @@
       ? '<p class="ins-warn">Bu sayfa bir uygulamanın içinden (WhatsApp, Instagram…) açılmış. Önce ⋯ menüsünden <b>' +
         (info.ios ? 'Safari' : 'tarayıcıda') + '\'de aç</b>, sonra ekle.</p>' : '';
     // Neden önemli: kayıtlar yalnızca bu cihazda tutulduğu için nereden açıldığı veriyi etkiler
-    const why = (items) => '<div class="ins-why"><p class="ins-why-title">Neden önemli?</p><ul>' + items.map((x) => '<li>' + x + '</li>').join('') + '</ul></div>';
+    const why = (items) => '<details class="ins-why"><summary class="ins-why-title">Neden önemli?</summary><ul>' + items.map((x) => '<li>' + x + '</li>').join('') + '</ul></details>';
     const whyIos = why([
       '<b>Kayıtların silinmesin:</b> Safari, bir süre (yaklaşık 7 gün) açmadığın sitelerin kayıtlarını kendiliğinden silebilir. Ana ekrandaki uygulamada bu olmaz.',
       '<b>Kayıtlar taşınmaz:</b> Safari\'de girdiğin antrenmanlar ana ekran uygulamasına geçmez; ikisi ayrı yer kullanır. Önce ekle, sonra uygulamayı simgeden açıp başla.',
@@ -762,6 +768,43 @@
       : '<p class="small"><b>iPhone</b></p>' + iosSteps + whyIos + '<p class="small"><b>Android</b></p>' + androidSteps;
     return '<div class="install-box"><p class="ins-title">📲 ' + (compact ? 'Önce telefonuna uygulama gibi ekle' : 'Telefonda ana ekrana ekle') + '</p>' +
       '<p class="muted small">Tam ekran açılır, internetsiz de çalışır.</p>' + warnInApp + body + warnData + '</div>';
+  }
+
+  // ---------- İpuçları (v26) ----------
+  // Bilgi, kişi o ekrana/özelliğe ilk geldiğinde tek seferlik küçük kartla verilir ("Anladım" → bir daha çıkmaz).
+  // settings.tipsSeen = { id: true }; _existing: true → bu özellikten önce kullananlar (hepsi görülmüş sayılır).
+  const TIPS = {
+    home: 'Bir güne dokun, antrenman başlasın. Günlerini ve hareketlerini sağ üstteki ⚙︎ Ayarlar\'dan değiştirirsin.',
+    'set-log': '−/+ ile ayarla ya da kutuya yazarak gir, sonra Seti kaydet. −/+ adımını hareketin ⋯ menüsü → Ayarlar\'dan değiştirebilirsin.',
+    target: '🎯 Bugünkü hedefin: geçen seferinden biraz fazlası. Değerler buna göre hazır gelir; yapamazsan değiştirip kaydet.',
+    warmup: 'Isınma setini "Isınma" ile işaretle; ilerleme ve rekor hesabına girmez.',
+    'add-exercise': 'Burada eklediğin ya da çıkardığın hareketler sadece bu antrenmana aittir. Kalıcı değişiklik için ⚙︎ Ayarlar.',
+    cardio: 'Makinedeki kaloriyi girersen haftalık kalori özetin doğru olur. Göremediysen "Kaloriyi tahmin et".',
+    summary: 'Bir hareketin adına dokunursan o hareketin grafiğini ve rekorlarını görürsün.',
+    history: 'Bir antrenmana dokun, detayını gör. Değiştirmek için içindeki ✎ Antrenmanı düzenle.',
+    overview: 'Hafta / ay arasında geç, ‹ › ile önceki dönemlere bak. Kalori kutusuna ve hareketlere dokununca grafik açılır.',
+    exercise: 'Grafikte bir güne dokun, o günün setini gör. ⚙︎ ile tekrar aralığını ve ağırlık adımını değiştir.',
+    settings: 'Günlerini burada kalıcı olarak düzenlersin: hareket ekle, çıkar, sırala. Antrenman sırasında yaptığın değişiklikler sadece o güne aittir.',
+    kcal: 'Ağırlık kalorisi yaptığın set sayısından tahmin edilir; kardiyo kalorisi girdiğin değerdir.',
+  };
+
+  function tipSeen(id) {
+    const seen = state.settings.tipsSeen || {};
+    return !!(seen[id] || seen._existing);
+  }
+
+  function tip(id) {
+    if (!TIPS[id] || tipSeen(id)) return '';
+    return '<div class="tip" role="note"><span class="tip-ic" aria-hidden="true">💡</span><span class="tip-text">' + esc(TIPS[id]) + '</span>' +
+      '<button class="tip-ok" data-action="tip-ok" data-id="' + id + '">Anladım</button></div>';
+  }
+
+  // Ekran ipucu: başlığın hemen altına
+  function withScreenTip(html, id) {
+    const t = tip(id);
+    if (!t) return html;
+    const i = html.indexOf('</header>');
+    return i === -1 ? t + html : html.slice(0, i + 9) + t + html.slice(i + 9);
   }
 
   // ---------- Sürüm notu (v21) ----------
@@ -800,20 +843,15 @@
     const dots = '<div class="wl-dots" aria-label="Adım ' + n + ' / ' + steps.length + '">' + steps.map((_, i) =>
       '<i class="' + (i + 1 === n ? 'on' : i + 1 < n ? 'done' : '') + '"></i>').join('') + '</div>';
     if (step === 'intro') {
-      const point = (icon, title, text) => '<li><span class="wl-ic" aria-hidden="true">' + icon + '</span><span><b>' + title + '</b>' +
-        '<span class="muted small">' + text + '</span></span></li>';
+      const point = (n, text) => '<li><span class="wl-ic" aria-hidden="true">' + n + '</span><span><b>' + text + '</b></span></li>';
       return '<div class="welcome">' + dots +
-        '<h1>Progressive</h1><p class="wl-lead">Ağırlıklarını ve kardiyonu kaydet, her antrenmanda biraz daha ileri git.</p>' +
+        '<h1>Progressive</h1><p class="wl-lead">Her antrenmanda biraz daha ileri git.</p>' +
         '<ul class="wl-points">' +
-        point('✓', 'Hızlı kayıt', 'Her set 1–3 dokunuşla. Geçen seferki değerler hazır gelir.') +
-        point('🎯', 'Bugünkü hedef', 'Geçen seferine göre bu sefer ne yapman gerektiğini önerir.') +
-        point('📈', 'İlerleme ve rekorlar', 'Hareket hareket grafik, kişisel rekorlar, haftalık ve aylık özet.') +
-        point('🔥', 'Kardiyo ve kalori', 'Makine ayarları, mesafe, kalori; ağırlık antrenmanının tahmini kalorisi.') +
+        point('1', 'Günü seç, başlat') +
+        point('2', 'Her seti tek dokunuşla kaydet') +
+        point('3', 'İlerlemeni gör') +
         '</ul>' +
-        (steps.includes('install')
-          ? '<div class="wl-install-sum"><b>📲 Telefonda kullanacaksan ana ekrana ekle</b>' +
-            '<span class="muted small">Kayıtların silinmez, tam ekran ve internetsiz çalışır. Nasıl yapılacağı bir sonraki adımda.</span></div>' : '') +
-        '<p class="muted small wl-note">Verilerin bu telefonda saklanır. Ayarlar → Yedek al ile ara ara yedekle.</p>' +
+        (steps.includes('install') ? '<p class="muted small wl-note">📲 Sonraki adımda telefonuna nasıl ekleyeceğini göstereceğiz.</p>' : '') +
         '<button class="primary wide" data-action="wl-next">Başla</button>' +
         '<label class="text-btn file-btn wl-restore">Yedeğim var, geri yükle<input type="file" accept="application/json,.json" data-action="import" hidden></label>' +
         '<p class="muted small center-text">sürüm ' + APP_VERSION + '</p></div>';
@@ -822,8 +860,8 @@
       const info = installInfo();
       const phone = info.ios || info.android;
       return '<div class="welcome">' + dots +
-        '<h2>Telefonuna uygulama gibi ekle</h2>' +
-        '<p class="muted">' + (phone ? 'Bir dakikanı alır; kayıtlarının güvende kalması için önemli.' : 'Bilgisayardasın. Telefonda kullanacaksan bu adımları telefonunda yap.') + '</p>' +
+        '<h2>Telefonuna ekle</h2>' +
+        (phone ? '' : '<p class="muted">Telefonda kullanacaksan bu adımları telefonunda yap.</p>') +
         installBox(false) +
         // Her telefonda aynı: zaten eklediyse atlar, eklemeden de devam edebilir
         '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
@@ -842,7 +880,7 @@
           '<span class="muted small">' + esc(p.desc) + '</span>' + (on && days ? '<span class="wl-days small">' + days + '</span>' : '') + '</span></button>';
       }).join('');
       return '<div class="welcome">' + dots +
-        '<h2>Nasıl çalışıyorsun?</h2><p class="muted">Bir program seç; günlerini ve hareketlerini sonra Ayarlar\'dan istediğin gibi değiştirebilirsin.</p>' +
+        '<h2>Programını seç</h2><p class="muted">Sonra istediğin gibi değiştirebilirsin.</p>' +
         '<div class="mode-list" role="radiogroup">' + cards + '</div>' +
         '<p class="muted small wl-note">Her programda ayrıca "Sadece kardiyo" günü var.</p>' +
         '<div class="wl-actions"><button class="ghost-btn" data-action="wl-back">Geri</button>' +
@@ -864,6 +902,7 @@
   function finishWelcome() {
     Store.applyProgram(state, ui.welcomeProgram);
     state.settings.lastSeenVersion = APP_VERSION;   // yeni kullanıcıya "Neler yeni" gösterme
+    state.settings.tipsSeen = {};                   // yeni kullanıcı ipuçlarını görür
     persist();
     ui.view = 'home';
     ui.welcomeStep = 1;
@@ -963,7 +1002,7 @@
     const p = state.settings.profile || {};
     notes.push('Ağırlık kalorisi set sayısından tahmin edilir (set başına ~2 dk, orta-yoğun antrenman)' +
       (p.heightCm && p.age && p.sex ? '; boy, yaş ve cinsiyetin hesaba katılıyor.' : '. Ayarlar\'a boy, yaş ve cinsiyet girersen daha isabetli olur.'));
-    return '<h3>Yakılan kalori · ' + esc(label) + '</h3>' +
+    return '<h3>Yakılan kalori · ' + esc(label) + '</h3>' + tip('kcal') +
       '<p class="kcal-head"><b>~' + fmtKcal(cs.total) + '</b> <span class="muted">/ ' + fmtKcal(goal) + ' kcal hedef</span></p>' +
       '<div class="bar" aria-label="Kalori hedefi"><i style="width:' + pct + '%"></i></div>' +
       '<p class="small">' + (left > 0 ? 'Hedefe <b>' + fmtKcal(left) + ' kcal</b> kaldı' : 'Hedef tamam · <b>+' + fmtKcal(-left) + ' kcal</b>') + '</p>' +
@@ -1167,6 +1206,8 @@
         : '<p class="muted small" id="elapsed">' + minutesSince(w.startedAt) + ' dk · ' + totalSets + ' set</p></div>') +
       '<button class="pill-btn" data-action="finish">' + (editing ? 'Kaydet' : 'Bitir') + '</button></header>' +
       cards +
+      // Bir ekranda tek ipucu: kartlarda ipucu varsa bu bekler
+      (totalSets && cards.indexOf('class="tip"') === -1 ? tip('add-exercise') : '') +
       '<button class="ghost-btn" data-action="add-exercise">+ Hareket ekle</button>' +
       '<section class="cardio-section"><p class="section-label">Kardiyo</p>' + cardio + cardioTotalLine(w.cardio) +
       '<button class="ghost-btn" data-action="add-cardio">+ Kardiyo ekle</button></section>' +
@@ -1223,7 +1264,9 @@
             ? '<p class="muted small easy-set">Hazırlık seti · geçen seferki gibi (' + esc(L.formatSet(e.type, plan.ref)) + '). Hedef son ' +
               (targetMode() === 'last1' ? 'sette' : '2 sette') + '.</p>'
             : '';
-      active = '<div class="active-set">' +
+      // İlk set ipucu → sonra hedef (ilk kez çıkınca) → sonra ısınma (bir set kaydedildikten sonra)
+      const setTip = tip('set-log') || (tg ? tip('target') : '') || (ex.sets.length ? tip('warmup') : '');
+      active = setTip + '<div class="active-set">' +
         '<div class="active-head"><span>' + (d.isWarmup ? 'Isınma seti' : 'Set ' + n + (ex.targetSets ? ' / ' + ex.targetSets : '')) + '</span>' +
         '<button class="chip' + (d.isWarmup ? ' on' : '') + '" data-action="toggle-warmup" data-ex="' + i + '">Isınma</button></div>' +
         target +
@@ -1371,6 +1414,8 @@
       '<button class="ghost-btn new-day" data-action="day-new">+ Yeni gün ekle <span class="muted small">(ör. Legs)</span></button>' +
       otherSection +
       (installInfo().standalone ? '' : '<section class="card">' + installBox(false) + '</section>') +
+      '<section class="card"><p class="section-label">İpuçları</p><p class="small muted">Ekranlarda bir kez çıkan kısa açıklamaları tekrar görmek için.</p>' +
+      '<button class="ghost-btn" data-action="tips-reset">İpuçlarını yeniden göster</button></section>' +
       '<section class="card danger-zone"><p class="section-label">Baştan başla</p>' +
       '<p class="small muted">Tüm antrenmanları, günleri, hareketleri ve ayarları siler; uygulama ilk açılış ekranına döner. Geri alınamaz.</p>' +
       '<button class="ghost-btn danger" data-action="reset-all">Tüm verileri sıfırla</button></section>' +
@@ -1491,7 +1536,7 @@
       : '';
     const estimated = !!(existing && existing.caloriesEstimated);
     return '<form data-form="cardio">' +
-      '<h3>' + (existing ? 'Kardiyoyu düzenle' : 'Kardiyo ekle') + '</h3>' + lastBox +
+      '<h3>' + (existing ? 'Kardiyoyu düzenle' : 'Kardiyo ekle') + '</h3>' + tip('cardio') + lastBox +
       '<div class="field">Makine<div class="chips">' + Seed.CARDIO_TYPES.map((c) =>
         '<label class="chip-radio"><input type="radio" name="type" value="' + c.id + '"' + (c.id === lastType ? ' checked' : '') + '><span>' + esc(c.name) + '</span></label>').join('') +
       '</div></div>' +
@@ -1879,6 +1924,17 @@
       render();
     },
     'kcal-chart': () => openSheet({ type: 'kcal', sel: null }),
+    'tip-ok': (el) => {
+      state.settings.tipsSeen = Object.assign({}, state.settings.tipsSeen, { [el.dataset.id]: true });
+      persist();
+      if (ui.sheet) renderSheet(); else render();
+    },
+    'tips-reset': () => {
+      state.settings.tipsSeen = {};
+      persist();
+      render();
+      toast('İpuçları yeniden gösterilecek');
+    },
     'wl-next': () => { ui.welcomeStep = Math.min(welcomeSteps().length, ui.welcomeStep + 1); render(); window.scrollTo(0, 0); },
     'wl-back': () => { ui.welcomeStep = Math.max(1, ui.welcomeStep - 1); render(); window.scrollTo(0, 0); },
     'wl-program': (el) => { ui.welcomeProgram = el.dataset.id; render(); },
@@ -2313,6 +2369,8 @@
     aw._plan = t ? t.items.map((i) => ({ exerciseId: i.exerciseId, targetSets: i.targetSets })) : null;
   }
 
+  // İpuçlarından önce kullanmaya başlamış olanlar: hepsi görülmüş sayılır (Ayarlar'dan yeniden açılabilir)
+  if (state.onboarded && !state.settings.tipsSeen) { state.settings.tipsSeen = { _existing: true }; persist(); }
   render();
   checkWhatsNew();
   // Kayıtlar yalnızca bu cihazda: tarayıcıdan kalıcı depolama iste (yer daralınca otomatik silinmesin)
