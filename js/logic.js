@@ -51,6 +51,21 @@
     return fmtNum(set.weight) + '×' + reps;
   }
 
+  // Drop setleriyle birlikte (v27): "80×8 + drop 60×6 + drop 50×6". Drop'lar ayrı çalışma seti sayılmaz.
+  function formatSetFull(type, set) {
+    const drops = (set && set.drops) || [];
+    return formatSet(type, set) + drops.map((d) => ' + drop ' + formatSet(type, d)).join('');
+  }
+
+  // Drop seti önerisi: ana setin (ya da son drop'un) ~%20 hafifi, ağırlık adımına aşağı yuvarlanır; tekrar aynı
+  function dropDraft(ex, set) {
+    const drops = (set && set.drops) || [];
+    const base = drops.length ? drops[drops.length - 1] : set;
+    const step = (ex && ex.weightStep) || 2.5;
+    const w = Number(base && base.weight) || 0;
+    return { weight: Math.max(0, Math.floor((w * 0.8) / step + 1e-9) * step), reps: (base && base.reps) || 8 };
+  }
+
   // ---------- Ağırlık adımı ----------
 
   function stepValue(value, step, direction) {
@@ -310,6 +325,7 @@
   const STRENGTH_MET = 5;
   const MIN_PER_WORK_SET = 2;
   const MIN_PER_WARMUP_SET = 1;
+  const MIN_PER_DROP = 1;
   // Ayar benzerliği için ölçek: bu kadar fark = 1 birim uzaklık
   const SETTING_SCALE = { speed: 1, incline: 2, level: 2, setting: 2 };
 
@@ -384,6 +400,7 @@
       for (const st of e.sets || []) {
         if (!(st.reps > 0 || st.seconds > 0)) continue;
         minutes += st.isWarmup ? MIN_PER_WARMUP_SET : MIN_PER_WORK_SET;
+        minutes += ((st.drops || []).filter((d) => d.reps > 0).length) * MIN_PER_DROP;
       }
     }
     if (!minutes) return 0;
@@ -451,10 +468,32 @@
   }
 
   // Son kardiyo antrenmanı (geçen seferki kardiyo özeti için)
-  function lastCardioSession(workouts, excludeId, before) {
+  // warmup (v27): true → yalnızca ısınma yürüyüşleri, false → yalnızca normal kardiyo, verilmezse hepsi.
+  // Dönüş: { startedAt, cardio: [...] } ya da null
+  function lastCardioSession(workouts, excludeId, before, warmup) {
     const t = before ? new Date(before) : null;
-    return (workouts || []).filter((w) => w.id !== excludeId && (w.cardio || []).length && (!t || new Date(w.startedAt) < t))
-      .sort(byStartDesc)[0] || null;
+    const pick = (w) => (w.cardio || []).filter((c) => warmup === undefined || !!c.warmup === warmup);
+    const w = (workouts || []).filter((x) => x.id !== excludeId && pick(x).length && (!t || new Date(x.startedAt) < t))
+      .sort(byStartDesc)[0];
+    return w ? { id: w.id, startedAt: w.startedAt, cardio: pick(w) } : null;
+  }
+
+  // Bu hareketin tüm zamanların en iyi seti (before'dan önceki bitmiş antrenmanlar) ve kaç antrenman önce yapıldığı.
+  // sessionsAgo: 1 = bu hareketin geçen antrenmanı. Dönüş: { set, startedAt, sessionsAgo } ya da null
+  function bestEver(workouts, type, exerciseId, before, excludeId) {
+    const t = before ? new Date(before) : null;
+    const sessions = (workouts || [])
+      .filter((w) => w.id !== excludeId && w.endedAt && (!t || new Date(w.startedAt) < t))
+      .map((w) => ({ w, sets: (w.exercises || []).filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets || []).filter(isWorkingSet) }))
+      .filter((x) => x.sets.length)
+      .sort((a, b) => byStartDesc(a.w, b.w));
+    let best = null;
+    sessions.forEach((x, i) => {
+      const b = bestSet(type, x.sets);
+      // Eşitlikte daha eski olan kalır (rekoru ilk kez yaptığın an)
+      if (b && (!best || compareSets(type, b, best.set) >= 0)) best = { set: b, startedAt: x.w.startedAt, sessionsAgo: i + 1 };
+    });
+    return best;
   }
 
   // ---------- Sürüm notu ----------
@@ -481,22 +520,23 @@
     };
     const a = sets(before), b = sets(after);
     const out = [];
-    const fmt = (x) => (x.set.isWarmup ? 'ısınma ' : '') + formatSet(typeOf(x.exerciseId), x.set);
+    const fmt = (x) => (x.set.isWarmup ? 'ısınma ' : '') + formatSetFull(typeOf(x.exerciseId), x.set);
+    const dropsKey = (st) => JSON.stringify((st.drops || []).map((d) => [d.weight, d.reps]));
     for (const [id, x] of b) {
       const old = a.get(id);
       if (!old) out.push({ kind: 'add', text: nameOf(x.exerciseId) + ': set eklendi (' + fmt(x) + ')' });
-      else if (old.set.weight !== x.set.weight || old.set.reps !== x.set.reps || old.set.seconds !== x.set.seconds || !!old.set.isWarmup !== !!x.set.isWarmup) {
+      else if (old.set.weight !== x.set.weight || old.set.reps !== x.set.reps || old.set.seconds !== x.set.seconds || !!old.set.isWarmup !== !!x.set.isWarmup || dropsKey(old.set) !== dropsKey(x.set)) {
         out.push({ kind: 'change', text: nameOf(x.exerciseId) + ': ' + fmt(old) + ' → ' + fmt(x) });
       }
     }
     for (const [id, x] of a) if (!b.has(id)) out.push({ kind: 'remove', text: nameOf(x.exerciseId) + ': set silindi (' + fmt(x) + ')' });
-    const cn = (c) => (cardioName ? cardioName(c.type) : c.type) + ' ' + c.minutes + ' dk';
+    const cn = (c) => (c.warmup ? 'ısınma ' : '') + (cardioName ? cardioName(c.type) : c.type) + ' ' + c.minutes + ' dk';
     const ca = new Map(((before && before.cardio) || []).map((c) => [c.id, c]));
     const cb = new Map(((after && after.cardio) || []).map((c) => [c.id, c]));
     for (const [id, c] of cb) {
       const old = ca.get(id);
       if (!old) out.push({ kind: 'add', text: 'Kardiyo eklendi: ' + cn(c) });
-      else if (JSON.stringify([old.type, old.minutes, old.distanceKm, old.calories, old.settings]) !== JSON.stringify([c.type, c.minutes, c.distanceKm, c.calories, c.settings])) {
+      else if (JSON.stringify([old.type, old.minutes, old.distanceKm, old.calories, old.settings, !!old.warmup]) !== JSON.stringify([c.type, c.minutes, c.distanceKm, c.calories, c.settings, !!c.warmup])) {
         out.push({ kind: 'change', text: 'Kardiyo değişti: ' + cn(old) + (old.minutes !== c.minutes || old.type !== c.type ? ' → ' + cn(c) : '') });
       }
     }
@@ -550,6 +590,9 @@
       count: (list || []).length, minutes: sum('minutes') || 0, distanceKm: sum('distanceKm'), calories: sum('calories'),
       caloriesMissing: (list || []).filter((c) => !(Number(c.calories) > 0)).length,
       caloriesEstimated: (list || []).filter((c) => Number(c.calories) > 0 && c.caloriesEstimated).length,
+      // Isınma yürüyüşleri (v27): toplama dahil, ayrıca gösterilir
+      warmupCount: (list || []).filter((c) => c.warmup).length,
+      warmupMinutes: (list || []).filter((c) => c.warmup).reduce((t, c) => t + (Number(c.minutes) || 0), 0),
     };
   }
 
@@ -791,7 +834,7 @@
   }
 
   return {
-    E1RM_MAX_REPS, fmtNum, parseNum, formatSet, stepValue, e1rm, isWorkingSet, setScore,
+    E1RM_MAX_REPS, fmtNum, parseNum, formatSet, formatSetFull, dropDraft, bestEver, stepValue, e1rm, isWorkingSet, setScore,
     compareScores, totalLoad, compareSets, bestSet, trend, lastPerformance, prefill, periodRange,
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,

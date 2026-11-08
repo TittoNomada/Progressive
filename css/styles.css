@@ -595,3 +595,15 @@ button.prog-row:last-child { border-bottom: 0; }
 }
 details.ins-why summary { cursor: pointer; list-style: revert; }
 details.ins-why[open] summary { margin-bottom: 4px; }
+
+/* ---------- v27: drop set, ısınma yürüyüşü, en iyin ---------- */
+.set-row.drop { margin-left: 22px; width: calc(100% - 22px); padding: 6px 12px; background: transparent; border: 1px dashed var(--line); }
+.drop-tag, .warm-tag {
+  font-size: 12px; font-weight: 700; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 6px; padding: 0 6px; text-transform: lowercase;
+}
+.drop-btn { display: block; margin: 6px 0 0 22px; }
+.best-ever { margin: -2px 0 8px; }
+.warmup-btn { margin-bottom: 12px; }
+.warmup-section { margin-top: 0; margin-bottom: 12px; }
+.warmup-section .warm-tag { display: none; }
