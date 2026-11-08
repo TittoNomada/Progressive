@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 28;
+  const APP_VERSION = 29;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -847,16 +847,17 @@
     const seen = state.settings.lastSeenVersion;
     if (seen >= APP_VERSION) return;
     const list = L.changesSince(Seed.CHANGELOG, seen, APP_VERSION, 4);
-    state.settings.lastSeenVersion = APP_VERSION;
-    persist();
+    // v29: "görüldü" yalnızca "Anladım"a basınca kaydedilir. Yeni sürüm yüklenince sayfa bir kez kendiliğinden
+    // yenilenebiliyor (service worker); panel o yenilemede kaybolursa bir sonraki açılışta yine çıkar.
     if (list.length) openSheet({ type: 'whatsnew', list });
+    else { state.settings.lastSeenVersion = APP_VERSION; persist(); }
   }
 
   function sheetWhatsNew(s) {
     return '<h3>Yeni sürüm · ' + APP_VERSION + '</h3><p class="muted small">Uygulama güncellendi. Neler değişti:</p>' +
       s.list.map((c) => '<div class="wn-block"><p class="section-label">Sürüm ' + c.v + '</p><ul class="wn-list">' +
         c.items.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></div>').join('') +
-      '<div class="sheet-actions"><button class="primary wide" data-action="close-sheet">Tamam</button></div>';
+      '<div class="sheet-actions"><button class="primary wide" data-action="whatsnew-ok">Anladım</button></div>';
   }
 
   // ---------- İlk kurulum (v19) ----------
@@ -1513,7 +1514,8 @@
     else if (s.type === 'day') body = sheetDay(s);
     else if (s.type === 'exercise-menu') body = sheetExerciseMenu(s);
     else if (s.type === 'bodyweight') body = sheetBodyWeight(s);
-    $sheet.innerHTML = '<div class="backdrop" data-action="close-sheet"></div><div class="sheet" role="dialog">' + body + '</div>';
+    // "Neler değişti" yanlışlıkla kapanmasın: dışına dokunmak kapatmaz, yalnızca "Anladım"
+    $sheet.innerHTML = '<div class="backdrop"' + (s.type === 'whatsnew' ? '' : ' data-action="close-sheet"') + '></div><div class="sheet" role="dialog">' + body + '</div>';
   }
 
   function sheetExercise(s) {
@@ -2066,6 +2068,11 @@
     },
 
     'close-sheet': () => closeSheet(),
+    'whatsnew-ok': () => {
+      state.settings.lastSeenVersion = APP_VERSION;
+      persist();
+      closeSheet();
+    },
     'export': exportBackup,
     // Tüm verileri sıfırla: iki onay, ilkinde önce yedek alma seçeneği. Sonra ilk kurulum ekranı.
     'reset-all': async () => {
