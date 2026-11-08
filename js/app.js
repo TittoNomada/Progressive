@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 27;
+  const APP_VERSION = 28;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -791,7 +791,7 @@
     kcal: 'Ağırlık kalorisi yaptığın set sayısından tahmin edilir; kardiyo kalorisi girdiğin değerdir.',
     // v27: daha fazla özellik tanıtımı (her biri ilgili yer ilk görüldüğünde, ekranda tek ipucu)
     'warmup-walk': 'Antrenman öncesi yürüyüşünü buradan gir. Kardiyo toplamına girer, Özet\'te ısınma olarak ayrıca görünür.',
-    best: '🏆 En iyin: bu hareketteki tüm zamanların en iyi seti ve ne zaman yaptığın. Hedef ise geçen seferine göre çıkar.',
+    best: '🏆 Rekorun: bu hareketteki tüm zamanların en iyi setin ve ne zaman yaptığın. Hedef ise geçen seferine göre çıkar.',
     'edit-set': 'Kaydettiğin bir sete dokunarak düzeltebilir ya da silebilirsin.',
     record: '🏆 işareti kişisel rekor: o set bu hareketteki tüm zamanların en iyisi.',
     drop: 'Setin hemen ardından ağırlığı düşürüp devam ettiysen "+ Drop set" ile ekle. Set sayısına ve rekora girmez, kaloriye eklenir.',
@@ -1321,7 +1321,7 @@
       // Tüm zamanların en iyisi (v27): hedefin geldiği "geçen sefer"den ayrı, rekora ne kadar uzak olduğunu gösterir
       const be = tg && (plan.role === 'top' || plan.role === 'target') ? L.bestEver(state.workouts, e.type, ex.exerciseId, w.startedAt, w.id) : null;
       const bestLine = be
-        ? '<p class="muted small best-ever">🏆 En iyin: <b class="plain">' + esc(L.formatSet(e.type, be.set)) + '</b> · ' +
+        ? '<p class="muted small best-ever">🏆 Rekorun: <b class="plain">' + esc(L.formatSet(e.type, be.set)) + '</b> · ' +
           (be.sessionsAgo === 1 ? 'geçen sefer' : be.sessionsAgo + ' antrenman önce') + ' (' + esc(L.dateTr(be.startedAt, { noYear: true })) + ')</p>'
         : '';
       // Sırayla, her biri ilk kez gerektiğinde (bir ekranda tek ipucu)

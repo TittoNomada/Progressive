@@ -152,7 +152,8 @@
   // Sürüm notları (v21): yeni sürüm gelince açılışta bir kez gösterilir (settings.lastSeenVersion).
   // Kullanıcıya dönük, kısa; en yeni üstte. Yeni sürümde buraya bir satır ekle.
   const CHANGELOG = [
-    { v: 27, items: ['Antrenman başında "🚶 Isınma yürüyüşü ekle": kardiyoya sayılır, Özet\'te ısınma olarak ayrı görünür.', 'Drop set: bir setin ardından "+ Drop set" ile daha hafif ağırlıkla devamını ekle (ayrı set sayılmaz).', 'Hedefin altında "En iyin": tüm zamanların en iyi setin ve kaç antrenman önce yaptığın.', 'Daha fazla 💡 ipucu: özellikler ilk kullandığında bir kez tanıtılır.'] },
+    { v: 28, items: ['Hedefin altındaki satırın adı "Rekorun" oldu.'] },
+    { v: 27, items: ['Antrenman başında "🚶 Isınma yürüyüşü ekle": kardiyoya sayılır, Özet\'te ısınma olarak ayrı görünür.', 'Drop set: bir setin ardından "+ Drop set" ile daha hafif ağırlıkla devamını ekle (ayrı set sayılmaz).', 'Hedefin altında "Rekorun": tüm zamanların en iyi setin ve kaç antrenman önce yaptığın.', 'Daha fazla 💡 ipucu: özellikler ilk kullandığında bir kez tanıtılır.'] },
     { v: 26, items: ['Yeni kullanıcılar için kısa karşılama ve ekranlarda bir kez çıkan 💡 ipuçları. Ayarlar → İpuçlarını yeniden göster ile sen de görebilirsin.'] },
     { v: 25, items: ['Ana ekrana ekleme sayfasında "Zaten ekledim" butonu; Android\'de de iPhone\'daki gibi adım adım anlatım.'] },
     { v: 24, items: ['Ana ekrana ekleme adımlarına "bu sayfayı kapat, simgeden aç" eklendi; Android açıklaması netleşti.', 'Kayıtların telefonda kalıcı tutulması için depolama izni isteniyor.'] },
