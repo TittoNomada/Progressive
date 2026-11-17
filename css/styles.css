@@ -607,3 +607,11 @@ details.ins-why[open] summary { margin-bottom: 4px; }
 .warmup-btn { margin-bottom: 12px; }
 .warmup-section { margin-top: 0; margin-bottom: 12px; }
 .warmup-section .warm-tag { display: none; }
+
+/* ---------- v30: makineler ---------- */
+.machine-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+.machine-chips .chip:disabled { opacity: .35; }
+.machine-tabs { margin: 0 0 12px; }
+.machines-field .row-btn { margin-top: 6px; }
+.machines-field .ghost-btn { margin-top: 8px; }
+.machine-chips .chip.on { background: var(--text); color: var(--bg); }

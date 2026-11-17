@@ -51,6 +51,54 @@
     return fmtNum(set.weight) + '×' + reps;
   }
 
+  // ---------- Makineler (v30) ----------
+  // Bir hareketin birden çok makinesi olabilir (farklı ağırlık adımı / birim). Her makine ayrı bir hareket kaydıdır:
+  // ana hareket `machineIds: [id2, id3]` tutar, diğerleri `groupOf: anaId`. Günler (şablonlar) yalnızca ana hareketi içerir.
+  // Hedef, rekor, grafik makine makine ayrıdır (ağırlıklar makineler arasında karşılaştırılamaz).
+
+  function machinePrimary(exercises, id) {
+    const e = exercises[id];
+    return e && e.groupOf && exercises[e.groupOf] ? e.groupOf : id;
+  }
+
+  // Grubun makineleri sırayla; retired: true olanlar (kaldırılmış) yalnızca includeRetired ile
+  function machineIds(exercises, id, includeRetired) {
+    const p = machinePrimary(exercises, id);
+    const ids = [p].concat(((exercises[p] && exercises[p].machineIds) || []).filter((x) => exercises[x]));
+    return includeRetired ? ids : ids.filter((x) => x === p || !exercises[x].retired);
+  }
+
+  function hasMachines(exercises, id) {
+    return machineIds(exercises, id, true).length > 1;
+  }
+
+  function machineName(exercises, id) {
+    const ids = machineIds(exercises, id, true);
+    const e = exercises[id] || {};
+    return e.machineName || 'Makine ' + (ids.indexOf(id) + 1);
+  }
+
+  // Görünen ad: makinesi olan harekette "Chest press · Makine 2"
+  function exerciseLabel(exercises, id) {
+    const p = exercises[machinePrimary(exercises, id)];
+    const name = (p && p.name) || (exercises[id] && exercises[id].name) || id;
+    return hasMachines(exercises, id) ? name + ' · ' + machineName(exercises, id) : name;
+  }
+
+  function unitOf(e) { return e && e.unit === 'lb' ? 'lb' : 'kg'; }
+
+  // Antrenman başında hangi makine: grubun en son kullanılan (seti olan) makinesi, yoksa ana makine
+  function lastUsedMachine(workouts, exercises, id, excludeId) {
+    const ids = machineIds(exercises, id);
+    const p = machinePrimary(exercises, id);
+    const done = (workouts || []).filter((w) => w.id !== excludeId).sort(byStartDesc);
+    for (const w of done) {
+      const hit = (w.exercises || []).find((x) => ids.includes(x.exerciseId) && (x.sets || []).length);
+      if (hit) return hit.exerciseId;
+    }
+    return p;
+  }
+
   // Drop setleriyle birlikte (v27): "80×8 + drop 60×6 + drop 50×6". Drop'lar ayrı çalışma seti sayılmaz.
   function formatSetFull(type, set) {
     const drops = (set && set.drops) || [];
@@ -509,7 +557,7 @@
   // before/after: { exercises, cardio } (düzenleme başındaki kopya ve şimdiki hali). Setler ve kardiyo id ile eşlenir.
   function workoutChanges(before, after, exercises, cardioName) {
     const ex = exercises || {};
-    const nameOf = (id) => (ex[id] && ex[id].name) || id;
+    const nameOf = (id) => exerciseLabel(ex || {}, id);
     const typeOf = (id) => (ex[id] && ex[id].type) || 'weighted';
     const sets = (w) => {
       const m = new Map();
@@ -834,7 +882,8 @@
   }
 
   return {
-    E1RM_MAX_REPS, fmtNum, parseNum, formatSet, formatSetFull, dropDraft, bestEver, stepValue, e1rm, isWorkingSet, setScore,
+    E1RM_MAX_REPS, fmtNum, parseNum, formatSet, formatSetFull, dropDraft, bestEver, stepValue,
+    machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, e1rm, isWorkingSet, setScore,
     compareScores, totalLoad, compareSets, bestSet, trend, lastPerformance, prefill, periodRange,
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,

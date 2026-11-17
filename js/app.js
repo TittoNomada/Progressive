@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 29;
+  const APP_VERSION = 30;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -69,6 +69,10 @@
     return state.exercises[id] || { id, name: id, type: 'weighted', weightStep: 2.5, machineSetting: '' };
   }
 
+  // Makineler (v30): görünen ad "Chest press · Makine 2", birim makineye özel (kg / lb)
+  function exName(id) { return L.exerciseLabel(state.exercises, id); }
+  function unitOf(e) { return L.unitOf(e); }
+
   function activeWorkout() {
     return state.workouts.find((w) => w.id === state.activeWorkoutId) || null;
   }
@@ -94,7 +98,7 @@
   }
 
   // Grafik/özet birimi ve adı: ağırlıkta güç puanı (kg), vücut ağırlığında tekrar, süreli harekette saniye
-  function metricUnit(metric) { return metric === 'reps' ? ' tekrar' : metric === 'seconds' ? ' sn' : ' kg'; }
+  function metricUnit(metric, e) { return metric === 'reps' ? ' tekrar' : metric === 'seconds' ? ' sn' : ' ' + unitOf(e); }
   function metricName(metric) {
     return metric === 'reps' ? 'En iyi setteki tekrar' : metric === 'seconds' ? 'En iyi setteki süre' : 'Güç puanı';
   }
@@ -131,7 +135,7 @@
       bodyWeight: bodyWeight > 0 ? bodyWeight : null,
       sessionRpe: null,
       notes: '',
-      exercises: (t ? t.items : []).map((it) => ({ exerciseId: it.exerciseId, targetSets: it.targetSets || 3, sets: [] })),
+      exercises: (t ? t.items : []).map((it) => ({ exerciseId: L.lastUsedMachine(state.workouts, state.exercises, it.exerciseId), targetSets: it.targetSets || 3, sets: [] })),
       cardio: [],
     };
     snapshotPlan(w);
@@ -557,7 +561,7 @@
 
   // Hareket adı: dokununca hareket sayfası (grafik, rekorlar) açılır
   function exerciseTitle(e) {
-    return '<h3><button class="link-name" data-action="open-exercise" data-id="' + esc(e.id) + '">' + esc(e.name) +
+    return '<h3><button class="link-name" data-action="open-exercise" data-id="' + esc(e.id) + '">' + esc(exName(e.id)) +
       ' <span class="chev">›</span></button></h3>';
   }
 
@@ -568,12 +572,18 @@
     const h = L.exerciseHistory(state, e.id);
     const isReps = h.metric !== 'e1rm';   // tekrar ya da süre: güç puanı yok, değer doğrudan
     const one = (v) => L.fmtNum(Math.round(v * 10) / 10);
-    const unit = metricUnit(h.metric);
+    const unit = metricUnit(h.metric, e);
     const r = L.repRange(e);
     const header = '<header class="top"><button class="icon-btn" data-action="ex-back" aria-label="Geri">‹</button>' +
-      '<div class="center"><h2>' + esc(e.name) + '</h2><p class="muted small">' +
+      '<div class="center"><h2>' + esc(exercise(L.machinePrimary(state.exercises, e.id)).name) + '</h2><p class="muted small">' +
       (e.type === 'timed' ? 'Süreli · her seferinde +' + L.timeStepOf(e) + ' sn' : isReps ? 'Vücut ağırlığı · tekrar' : 'Tekrar aralığı ' + r.min + '–' + r.max) + '</p></div>' +
-      '<button class="icon-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '" aria-label="Hareket ayarları">⚙︎</button></header>';
+      '<button class="icon-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '" aria-label="Hareket ayarları">⚙︎</button></header>' +
+      // Makineler (v30): her makinenin grafiği ve rekoru ayrı
+      (L.hasMachines(state.exercises, e.id)
+        ? '<div class="chips-row machine-tabs">' + L.machineIds(state.exercises, e.id, true).map((id) =>
+          '<button class="chip-tab' + (id === e.id ? ' on' : '') + '" data-action="ex-machine" data-id="' + esc(id) + '">' +
+          esc(L.machineName(state.exercises, id)) + (unitOf(exercise(id)) === 'lb' ? ' (lb)' : '') + '</button>').join('') + '</div>'
+        : '');
     if (!h.sessions.length) {
       const inProgress = (activeWorkout() || { exercises: [] }).exercises.some((x) => x.exerciseId === e.id && x.sets.length);
       return header + '<section class="card"><p class="section-label">' + metricName(h.metric) + '</p>' +
@@ -789,6 +799,8 @@
     exercise: 'Grafikte bir güne dokun, o günün setini gör. ⚙︎ ile tekrar aralığını ve ağırlık adımını değiştir.',
     settings: 'Günlerini burada kalıcı olarak düzenlersin: hareket ekle, çıkar, sırala. Antrenman sırasında yaptığın değişiklikler sadece o güne aittir.',
     kcal: 'Ağırlık kalorisi yaptığın set sayısından tahmin edilir; kardiyo kalorisi girdiğin değerdir.',
+    machines: 'Bu hareketin birden çok makinesi var. Kullandığın makineyi seç: geçen sefer, hedef, rekor ve birim o makineye göre gelir.',
+    'machine-add': 'Salonda bu hareket için başka bir makine de kullanıyorsan (farklı ağırlık adımı ya da lb) "+ Makine ekle". Her makinenin hedefi ve rekoru ayrı tutulur.',
     // v27: daha fazla özellik tanıtımı (her biri ilgili yer ilk görüldüğünde, ekranda tek ipucu)
     'warmup-walk': 'Antrenman öncesi yürüyüşünü buradan gir. Kardiyo toplamına girer, Özet\'te ısınma olarak ayrıca görünür.',
     best: '🏆 Rekorun: bu hareketteki tüm zamanların en iyi setin ve ne zaman yaptığın. Hedef ise geçen seferine göre çıkar.',
@@ -828,7 +840,7 @@
     if (!id) return '';
     tipShown = true;
     return '<div class="tip" role="note"><span class="tip-ic" aria-hidden="true">💡</span><span class="tip-text">' + esc(TIPS[id]) + '</span>' +
-      '<button class="tip-ok" data-action="tip-ok" data-id="' + id + '">Anladım</button></div>';
+      '<button type="button" class="tip-ok" data-action="tip-ok" data-id="' + id + '">Anladım</button></div>';
   }
 
   // Ekran ipucu: başlığın hemen altına
@@ -1110,7 +1122,7 @@
       const one = (v) => L.fmtNum(Math.round(v * 10) / 10);
       const rows = sum.exerciseProgress.map((p) => {
         const e = exercise(p.exerciseId);
-        const unit = metricUnit(p.metric);
+        const unit = metricUnit(p.metric, e);
         const values = (p.prevAvg !== null ? '<span class="muted">' + one(p.prevAvg) + ' → </span>' : '') +
           '<b>' + one(p.avg) + unit + '</b>';
         let change = '';
@@ -1121,7 +1133,7 @@
         }
         const sub = p.sessions + ' antrenman · en iyi set ' + L.formatSet(e.type, p.best) +
           (p.comparedTo === 'earlier' ? ' · önceki dönemde yok, son antrenmanla kıyas' : '');
-        return '<button class="prog-row" data-action="open-exercise" data-id="' + esc(e.id) + '"><span class="prog-main"><span class="prog-name">' + esc(e.name) + ' <span class="chev">›</span></span>' +
+        return '<button class="prog-row" data-action="open-exercise" data-id="' + esc(e.id) + '"><span class="prog-main"><span class="prog-name">' + esc(exName(e.id)) + ' <span class="chev">›</span></span>' +
           '<span class="prog-val">' + values + ' ' + trendIcon(p.trend) + (change ? '<span class="prog-pct ' + p.trend + '">' + change + '</span>' : '') + '</span></span>' +
           '<span class="muted small prog-sub">' + esc(sub) + '</span></button>';
       }).join('');
@@ -1274,8 +1286,19 @@
     const prevLine = prev.sets.length
       ? '<p class="prev">Geçen sefer <span class="muted">(' + fmtDate(prev.workout.startedAt) + ')</span>: ' +
         prev.sets.map((s) => '<span class="' + (s.isWarmup ? 'warm' : '') + '">' + esc(L.formatSetFull(e.type, s)) + '</span>').join(' · ') + '</p>'
-      : '<p class="prev muted">İlk kez yapıyorsun</p>';
+      : '<p class="prev muted">' + (L.hasMachines(state.exercises, ex.exerciseId) ? 'Bu makinede ilk kez' : 'İlk kez yapıyorsun') + '</p>';
 
+    // Makine seçimi (v30): geçen sefer, hedef, rekor ve birim seçilen makineye göre. Set kaydedilince değişmez.
+    const mIds = L.machineIds(state.exercises, ex.exerciseId);
+    if (!mIds.includes(ex.exerciseId)) mIds.push(ex.exerciseId);   // kaldırılmış makineyle yapılmış eski kayıt
+    const machineChips = mIds.length > 1
+      ? '<div class="machine-chips">' + mIds.map((id) => {
+        const on = id === ex.exerciseId;
+        return '<button class="chip' + (on ? ' on' : '') + '" data-action="pick-machine" data-ex="' + i + '" data-id="' + esc(id) + '"' +
+          (!on && ex.sets.length ? ' disabled' : '') + '>' + esc(L.machineName(state.exercises, id)) +
+          (unitOf(exercise(id)) === 'lb' ? ' · lb' : '') + '</button>';
+      }).join('') + '</div>'
+      : '';
 
     const flags = L.recordFlags(e.type, ex.sets, L.priorBest(state.workouts, e.type, ex.exerciseId, w.startedAt, w.id));
     const prevWork = prev.sets.filter((x) => !x.isWarmup);
@@ -1313,7 +1336,7 @@
         : plan.role === 'backoff'
           ? '<p class="muted small easy-set"><b class="plain">Düşüş seti</b> · ' +
             (plan.lighter !== null && plan.lighter !== undefined
-              ? 'tekrar ' + r.min + '–' + r.max + ' arasında kalsın; ' + r.min + ' tekrara ulaşamayacaksan ağırlığı azalt (üst setten %5–10 hafif ≈ ' + esc(L.fmtNum(plan.lighter)) + ' kg).'
+              ? 'tekrar ' + r.min + '–' + r.max + ' arasında kalsın; ' + r.min + ' tekrara ulaşamayacaksan ağırlığı azalt (üst setten %5–10 hafif ≈ ' + esc(L.fmtNum(plan.lighter)) + ' ' + unitOf(e) + ').'
               : 'aynı şekilde devam et, ' + (timed ? 'sürenin' : 'tekrarın') + ' düşmesi normal.') + '</p>'
           : plan.role === 'prep' && plan.ref
             ? '<p class="muted small easy-set">Hazırlık seti · geçen seferki gibi (' + esc(L.formatSet(e.type, plan.ref)) + '). Hedef son ' +
@@ -1327,7 +1350,7 @@
         : '';
       // Sırayla, her biri ilk kez gerektiğinde (bir ekranda tek ipucu)
       const has = ex.sets.length > 0;
-      const setTip = tip('set-log', timed && 'stopwatch', tg && 'target', be && 'best', has && 'edit-set', has && 'warmup',
+      const setTip = tip('set-log', machineChips && 'machines', timed && 'stopwatch', tg && 'target', be && 'best', has && 'edit-set', has && 'warmup',
         flags.some(Boolean) && 'record', canDrop && 'drop', plan.role === 'backoff' && 'backoff', ex.sets.length >= 2 && 'menu');
       active = setTip + '<div class="active-set">' +
         '<div class="active-head"><span>' + (d.isWarmup ? 'Isınma seti' : 'Set ' + n + (ex.targetSets ? ' / ' + ex.targetSets : '')) + '</span>' +
@@ -1335,7 +1358,7 @@
         target + bestLine +
         (timed ? stopwatchBox(i, d, tg) : '') +
         '<div class="steppers">' +
-        stepper(weightLabel(e.type) + ' (kg)', 'weight', i, L.fmtNum(d.weight)) +
+        stepper(weightLabel(e.type) + ' (' + unitOf(e) + ')', 'weight', i, L.fmtNum(d.weight)) +
         (timed ? stepper('Süre (sn)', 'seconds', i, String(d.seconds || 0)) : stepper('Tekrar', 'reps', i, String(d.reps))) +
         '</div>' +
         '<button class="primary wide confirm" data-action="confirm-set" data-ex="' + i + '">✓ Seti kaydet</button></div>';
@@ -1353,7 +1376,7 @@
       '<div class="card-head" data-action="focus" data-ex="' + i + '">' +
       '<h3>' + esc(e.name) + (done ? ' <span class="done-badge">✓</span>' : '') + '</h3>' +
       '<button class="icon-btn small" data-action="exercise-menu" data-ex="' + i + '" aria-label="Hareket menüsü">⋯</button></div>' +
-      prevLine + '<div class="sets">' + doneSets + '</div>' + dropBtn + active + rest + addSet + '</section>';
+      machineChips + prevLine + '<div class="sets">' + doneSets + '</div>' + dropBtn + active + rest + addSet + '</section>';
   }
 
   // Kronometre: Başlat → Durdur, ölçülen süre "Süre" kutusuna yazılır. Elle de girilebilir.
@@ -1387,7 +1410,7 @@
       const prev = L.lastPerformance(state.workouts, ex.exerciseId, w.id, w.startedAt);
       const prevBest = prev ? L.bestSet(e.type, prev.sets) : null;
       const t = L.trend(e.type, prevBest, best);
-      return '<div class="sum-row"><button class="link-name" data-action="open-exercise" data-id="' + esc(e.id) + '">' + esc(e.name) + '</button><span>' +
+      return '<div class="sum-row"><button class="link-name" data-action="open-exercise" data-id="' + esc(e.id) + '">' + esc(exName(e.id)) + '</button><span>' +
         (prevBest ? '<span class="muted">' + esc(L.formatSet(e.type, prevBest)) + ' → </span>' : '') +
         '<b>' + esc(L.formatSet(e.type, best)) + '</b> ' + trendIcon(t) + '</span></div>';
     }).join('');
@@ -1401,14 +1424,14 @@
     const prList = w.exercises.map((ex, i) => {
       const e = exercise(ex.exerciseId);
       const sets = ex.sets.filter((s, si) => recs[i][si]);
-      return sets.length ? '<li><b>' + esc(e.name) + '</b> <span class="muted">' + sets.map((s) => esc(L.formatSetFull(e.type, s))).join(', ') + '</span></li>' : '';
+      return sets.length ? '<li><b>' + esc(exName(e.id)) + '</b> <span class="muted">' + sets.map((s) => esc(L.formatSetFull(e.type, s))).join(', ') + '</span></li>' : '';
     }).filter(Boolean);
     const prCount = recs.reduce((t, f) => t + f.filter(Boolean).length, 0);
     const upNames = w.exercises.filter((ex) => {
       const e = exercise(ex.exerciseId);
       const prev = L.lastPerformance(state.workouts, ex.exerciseId, w.id, w.startedAt);
       return L.trend(e.type, prev ? L.bestSet(e.type, prev.sets) : null, L.bestSet(e.type, ex.sets)) === 'up';
-    }).map((ex) => exercise(ex.exerciseId).name);
+    }).map((ex) => exName(ex.exerciseId));
     return '<header class="top"><div><h1>Tebrikler 💪</h1><p class="muted">' + esc(w.name) + ' · ' + mins + ' dk' +
       (cardioMin ? ' · ' + cardioMin + ' dk kardiyo' : '') + '</p></div></header>' + kcalLine(w) +
       (w.cardio.length ? '<section class="card"><p class="section-label">Kardiyo</p>' +
@@ -1431,7 +1454,8 @@
           '" data-dir="' + dir + '" aria-label="' + label + '"' + (off ? ' disabled' : '') + '>' + (dir < 0 ? '↑' : '↓') + '</button>';
         return '<div class="tpl-row">' +
           '<button class="tpl-name" data-action="edit-exercise" data-id="' + esc(e.id) + '"><b>' + esc(e.name) + '</b>' +
-          '<span class="muted small"> · ' + it.targetSets + ' set</span></button>' +
+          '<span class="muted small"> · ' + it.targetSets + ' set' +
+          (L.hasMachines(state.exercises, e.id) ? ' · ' + L.machineIds(state.exercises, e.id).length + ' makine' : '') + '</span></button>' +
           btn(-1, 'Yukarı taşı', idx === 0) + btn(1, 'Aşağı taşı', idx === t.items.length - 1) +
           '<button class="mini remove" data-action="tpl-remove" data-t="' + esc(t.id) + '" data-i="' + idx + '" aria-label="Günden çıkar">✕</button>' +
           '</div>';
@@ -1441,7 +1465,7 @@
         (rows || '<p class="muted small">Bu günde hareket yok.</p>') +
         '<button class="ghost-btn" data-action="tpl-add" data-t="' + esc(t.id) + '">+ ' + esc(t.name) + ' gününe hareket ekle</button></section>';
     }).join('');
-    const others = Object.values(state.exercises).filter((e) => !e.archived && !inDay.has(e.id))
+    const others = Object.values(state.exercises).filter((e) => !e.archived && !e.groupOf && !inDay.has(e.id))
       .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
       .map((e) => '<button class="row-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '"><b>' + esc(e.name) + '</b></button>')
       .join('');
@@ -1518,7 +1542,27 @@
     $sheet.innerHTML = '<div class="backdrop"' + (s.type === 'whatsnew' ? '' : ' data-action="close-sheet"') + '></div><div class="sheet" role="dialog">' + body + '</div>';
   }
 
+  // Makine ayarları (v30): ad, ağırlık adımı, birim. Tip ve tekrar aralığı ana hareketten gelir.
+  function unitChips(e) {
+    return '<div class="field">Birim<div class="chips">' + [['kg', 'kg'], ['lb', 'lb (pound)']].map(([v, n]) =>
+      '<label class="chip-radio"><input type="radio" name="unit" value="' + v + '"' + (unitOf(e) === v ? ' checked' : '') + '><span>' + n + '</span></label>').join('') +
+      '</div><p class="muted small">Makinenin üstünde yazan birim. Kayıtlar bu birimle tutulur, çevrilmez.</p></div>';
+  }
+
+  function sheetMachine(e) {
+    return '<form data-form="machine" data-id="' + esc(e.id) + '">' +
+      '<h3>' + esc(exName(e.id)) + '</h3>' +
+      '<label class="field">Makine adı<input name="machineName" value="' + esc(e.machineName || '') + '" placeholder="' +
+      esc(L.machineName(state.exercises, e.id)) + '" autocomplete="off"><span class="muted small">ör. Technogym, Matrix, sağdaki</span></label>' +
+      '<label class="field">Ağırlık adımı (' + unitOf(e) + ')<input name="weightStep" inputmode="decimal" value="' + esc(L.fmtNum(e.weightStep)) + '"></label>' +
+      unitChips(e) +
+      '<p class="muted small">Hedefi, rekoru ve grafiği diğer makinelerden ayrı tutulur.</p>' +
+      '<div class="sheet-actions"><button type="button" class="ghost-btn danger" data-action="machine-remove">Makineyi kaldır</button>' +
+      '<button type="submit" class="primary">Kaydet</button></div></form>';
+  }
+
   function sheetExercise(s) {
+    if (s.id && exercise(s.id).groupOf) return sheetMachine(exercise(s.id));
     const e = s.id ? exercise(s.id) : { name: '', type: 'weighted', weightStep: 2.5, machineSetting: '', repMin: 8, repMax: 12 };
     const rr = L.repRange(e);
     const types = [['weighted', 'Ağırlık × tekrar'], ['bodyweight', 'Vücut ağırlığı'], ['timed', 'Süre']];
@@ -1542,12 +1586,30 @@
       '<span class="muted small">Süre kutusundaki −/+ bu kadar değiştirir; hedef her seferinde bu kadar artar.</span></label>' +
       '<label class="field">' + '<span class="only-reps-inline">Ağırlık adımı (kg)</span><span class="only-timed-inline">Ek ağırlık adımı (kg)</span>' +
       '<input name="weightStep" inputmode="decimal" value="' + esc(L.fmtNum(e.weightStep)) + '"></label>' +
+      (s.id ? machinesField(e) : '') +
       '<div class="field only-reps">Tekrar aralığı<div class="range-row">' +
       '<input name="repMin" inputmode="numeric" value="' + rr.min + '" aria-label="En az tekrar"><span>–</span>' +
       '<input name="repMax" inputmode="numeric" value="' + rr.max + '" aria-label="En çok tekrar"></div>' +
       '<p class="muted small">Hedef önerisi için: üst sınıra ulaşınca ağırlık artırılır, alt sınırdan devam edilir.</p></div>' +
       '<div class="sheet-actions"><button type="button" class="ghost-btn" data-action="close-sheet">Vazgeç</button>' +
       '<button type="submit" class="primary">Kaydet</button></div></form>';
+  }
+
+  // Ana hareketin ayarlarında: birim, (varsa) Makine 1'in adı, diğer makineler ve "+ Makine ekle"
+  function machinesField(e) {
+    const ids = L.machineIds(state.exercises, e.id).slice(1);
+    const multi = ids.length > 0;
+    return unitChips(e) +
+      '<div class="field machines-field">Makineler' + (multi ? '' : ' <span class="muted small">(isteğe bağlı)</span>') +
+      (multi ? '' : tip('machine-add')) +
+      (multi ? '<label class="field">Bu makinenin adı<input name="machineName" value="' + esc(e.machineName || '') + '" placeholder="Makine 1" autocomplete="off"></label>' : '') +
+      ids.map((id) => {
+        const m = exercise(id);
+        return '<button type="button" class="row-btn" data-action="edit-exercise" data-id="' + esc(id) + '"><b>' + esc(L.machineName(state.exercises, id)) + '</b>' +
+          '<span class="muted small"> · adım ' + esc(L.fmtNum(m.weightStep)) + ' ' + unitOf(m) + '</span></button>';
+      }).join('') +
+      '<button type="submit" class="ghost-btn" name="addMachine" value="1">+ Makine ekle</button>' +
+      '<p class="muted small">Aynı hareket için farklı makine (farklı ağırlık adımı ya da lb). Antrenmanda kartın üstünden seçersin.</p></div>';
   }
 
   // Alt panelin üzerinde çalıştığı antrenman: geçmişten açıldıysa o, yoksa devam eden antrenman
@@ -1562,8 +1624,8 @@
     const set = ex.sets[s.si];
     const e = exercise(ex.exerciseId);
     return '<form data-form="set">' +
-      '<h3>' + esc(e.name) + ' · ' + (set.isWarmup ? 'ısınma' : 'set ' + workNo(ex.sets, s.si)) + '</h3>' +
-      '<label class="field">' + weightLabel(e.type) + ' (kg)<input name="weight" inputmode="decimal" value="' + esc(L.fmtNum(set.weight)) + '"></label>' +
+      '<h3>' + esc(exName(e.id)) + ' · ' + (set.isWarmup ? 'ısınma' : 'set ' + workNo(ex.sets, s.si)) + '</h3>' +
+      '<label class="field">' + weightLabel(e.type) + ' (' + unitOf(e) + ')<input name="weight" inputmode="decimal" value="' + esc(L.fmtNum(set.weight)) + '"></label>' +
       (e.type === 'timed'
         ? '<label class="field">Süre (sn)<input name="seconds" inputmode="numeric" value="' + esc(set.seconds || 0) + '"></label>'
         : '<label class="field">Tekrar<input name="reps" inputmode="numeric" value="' + esc(set.reps) + '"></label>') +
@@ -1586,9 +1648,9 @@
       '<input class="step-input" name="' + name + '" inputmode="decimal" value="' + esc(value) + '">' +
       '<button type="button" class="step" data-action="cf-step" data-name="' + name + '" data-step="' + st + '" data-start="0" data-dir="1" aria-label="artır">+</button></div></div>';
     return '<form data-form="drop">' +
-      '<h3>' + esc(e.name) + ' · drop set</h3>' +
+      '<h3>' + esc(exName(e.id)) + ' · drop set</h3>' +
       '<p class="muted small">Ana set: ' + esc(L.formatSetFull(e.type, set)) + '. Drop set ayrı set sayılmaz; rekor ve hedefi etkilemez.</p>' +
-      row('weight', weightLabel(e.type) + ' (kg)', L.fmtNum(v.weight), step) + row('reps', 'Tekrar', String(v.reps), 1) +
+      row('weight', weightLabel(e.type) + ' (' + unitOf(e) + ')', L.fmtNum(v.weight), step) + row('reps', 'Tekrar', String(v.reps), 1) +
       '<div class="sheet-actions">' + (existing ? '<button type="button" class="ghost-btn danger" data-action="delete-drop">Sil</button>'
         : '<button type="button" class="ghost-btn" data-action="close-sheet">Vazgeç</button>') +
       '<button type="submit" class="primary">' + (existing ? 'Kaydet' : 'Drop ekle') + '</button></div></form>';
@@ -1680,8 +1742,8 @@
 
   function sheetAddExercise() {
     const w = activeWorkout();
-    const inWorkout = new Set(w.exercises.map((e) => e.exerciseId));
-    const list = Object.values(state.exercises).filter((e) => !e.archived && !inWorkout.has(e.id))
+    const inWorkout = new Set(w.exercises.map((e) => L.machinePrimary(state.exercises, e.exerciseId)));
+    const list = Object.values(state.exercises).filter((e) => !e.archived && !e.groupOf && !inWorkout.has(e.id))
       .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
       .map((e) => '<button class="row-btn" data-action="pick-exercise" data-id="' + esc(e.id) + '">' + esc(e.name) + '</button>').join('');
     return '<h3>Hareket ekle</h3>' +
@@ -1708,7 +1770,7 @@
   function sheetAddToTemplate(s) {
     const t = template(s.templateId);
     const inT = new Set(t.items.map((i) => i.exerciseId));
-    const list = Object.values(state.exercises).filter((e) => !e.archived && !inT.has(e.id))
+    const list = Object.values(state.exercises).filter((e) => !e.archived && !e.groupOf && !inT.has(e.id))
       .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
       .map((e) => '<button class="row-btn" data-action="tpl-pick" data-id="' + esc(e.id) + '">' + esc(e.name) + '</button>').join('');
     return '<h3>' + esc(t.name) + ' gününe ekle</h3>' +
@@ -1722,7 +1784,7 @@
     const w = activeWorkout();
     const ex = w.exercises[s.ex];
     const e = exercise(ex.exerciseId);
-    return '<h3>' + esc(e.name) + '</h3>' +
+    return '<h3>' + esc(exName(e.id)) + '</h3>' +
       '<button class="row-btn" data-action="open-exercise" data-id="' + esc(e.id) + '">📈 Gelişim grafiği ve rekorlar</button>' +
       '<button class="row-btn" data-action="edit-exercise" data-id="' + esc(e.id) + '">Ayarlar (ad, tip, adımlar' + (e.type === 'timed' ? '' : ', tekrar aralığı') + ')</button>' +
       (s.ex > 0 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="-1">↑ Yukarı taşı</button>' : '') +
@@ -1958,7 +2020,7 @@
       const t = template(el.dataset.t);
       const i = Number(el.dataset.i);
       const e = exercise(t.items[i].exerciseId);
-      const ok = await ask({ title: e.name + ' çıkarılsın mı?',
+      const ok = await ask({ title: exName(e.id) + ' çıkarılsın mı?',
         message: t.name + ' gününün listesinden çıkar. Geçmiş kayıtların silinmez; istersen sonra tekrar ekleyebilirsin.',
         ok: 'Çıkar', danger: true });
       if (!ok) return;
@@ -2006,6 +2068,40 @@
     },
     'add-exercise': () => openSheet({ type: 'add-exercise' }),
     'pick-exercise': (el) => addExerciseToWorkout(el.dataset.id),
+
+    'pick-machine': (el) => {
+      const w = activeWorkout();
+      const i = Number(el.dataset.ex);
+      const ex = w && w.exercises[i];
+      if (!ex || ex.exerciseId === el.dataset.id) return;
+      if (ex.sets.length) { toast('Set kaydettikten sonra makine değişmez'); return; }
+      ex.exerciseId = el.dataset.id;
+      delete ui.drafts[i];
+      if (ui.sw && ui.sw.ex === i) ui.sw = null;
+      persist();
+      render();
+    },
+    'ex-machine': (el) => { ui.exerciseId = el.dataset.id; ui.chartSel = null; render(); },
+    'machine-remove': async () => {
+      const id = ui.sheet.id;
+      const m = state.exercises[id];
+      const primaryId = m.groupOf;
+      const used = state.workouts.some((w) => w.exercises.some((x) => x.exerciseId === id && x.sets.length));
+      const ok = await ask({ title: exName(id) + ' kaldırılsın mı?',
+        message: used ? 'Bu makinedeki geçmiş kayıtların silinmez; Geçmiş ve grafiklerde kalır. Yeni antrenmanlarda seçilemez.' : 'Bu makinede kayıt yok.',
+        ok: 'Kaldır', danger: true });
+      if (!ok) return;
+      const aw = activeWorkout();
+      if (aw) aw.exercises.forEach((x, xi) => { if (x.exerciseId === id && !x.sets.length) { x.exerciseId = primaryId; delete ui.drafts[xi]; } });
+      if (used) m.retired = true;
+      else {
+        delete state.exercises[id];
+        state.exercises[primaryId].machineIds = (state.exercises[primaryId].machineIds || []).filter((x) => x !== id);
+      }
+      persist();
+      openSheet({ type: 'exercise', id: primaryId });
+      toast('Makine kaldırıldı');
+    },
 
     'add-cardio': (el) => openSheet({ type: 'cardio', workoutId: el.dataset.w || null }),
     'add-warmup': () => openSheet({ type: 'cardio', warmup: true }),
@@ -2121,7 +2217,7 @@
 
   function addExerciseToWorkout(id) {
     const w = activeWorkout();
-    w.exercises.push({ exerciseId: id, targetSets: 3, sets: [] });
+    w.exercises.push({ exerciseId: L.lastUsedMachine(state.workouts, state.exercises, id), targetSets: 3, sets: [] });
     ui.focus = w.exercises.length - 1;
     snapshotPlan(w);
     persist();
@@ -2219,10 +2315,33 @@
       e.type = f.get('type') || e.type;
       if (isTimed) e.timeStep = tStep;
       else { e.repMin = rMin; e.repMax = rMax; }
+      // Makineler (v30): birim ve Makine 1'in adı; ad, tip ve aralıklar diğer makinelere de geçer
+      if (f.get('unit')) { if (f.get('unit') === 'lb') e.unit = 'lb'; else delete e.unit; }
+      if (f.has('machineName')) { const mn = String(f.get('machineName') || '').trim(); if (mn) e.machineName = mn; else delete e.machineName; }
+      L.machineIds(state.exercises, id, true).slice(1).forEach((mid) => {
+        Object.assign(state.exercises[mid], { name: e.name, type: e.type, repMin: e.repMin, repMax: e.repMax, timeStep: e.timeStep });
+        if (e.timeStep === undefined) delete state.exercises[mid].timeStep;
+      });
+      const addMachine = ev.submitter && ev.submitter.name === 'addMachine';
+      let newMachine = null;
+      if (addMachine) {
+        newMachine = Store.uid('ex');
+        state.exercises[newMachine] = { id: newMachine, name: e.name, type: e.type, weightStep: e.weightStep, machineSetting: '',
+          repMin: e.repMin, repMax: e.repMax, primaryMuscles: [], secondaryMuscles: [], archived: false, isCustom: true, groupOf: id };
+        if (e.unit) state.exercises[newMachine].unit = e.unit;
+        if (e.timeStep) state.exercises[newMachine].timeStep = e.timeStep;
+        e.machineIds = (e.machineIds || []).concat(newMachine);
+      }
       // Devam eden antrenmanda bu hareketin henüz kaydedilmemiş seti yeni ayarlarla yeniden hesaplansın
       const aw = activeWorkout();
       if (aw) aw.exercises.forEach((x, xi) => { if (x.exerciseId === id) delete ui.drafts[xi]; });
       persist();
+      if (newMachine) {
+        render();
+        openSheet({ type: 'exercise', id: newMachine });
+        toast('Makine eklendi: adını, adımını ve birimini ayarla');
+        return;
+      }
       closeSheet();
       if (toWorkout) {
         addExerciseToWorkout(id);
@@ -2231,6 +2350,23 @@
         render();
         toast(addedTo ? addedTo.name + ' gününe eklendi' : 'Kaydedildi');
       }
+      return;
+    }
+
+    if (kind === 'machine') {
+      const m = state.exercises[form.dataset.id];
+      const step = L.parseNum(f.get('weightStep'));
+      if (!(step > 0)) { toast('Ağırlık adımı geçersiz'); return; }
+      m.weightStep = step;
+      if (f.get('unit') === 'lb') m.unit = 'lb'; else delete m.unit;
+      const mn = String(f.get('machineName') || '').trim();
+      if (mn) m.machineName = mn; else delete m.machineName;
+      const aw = activeWorkout();
+      if (aw) aw.exercises.forEach((x, xi) => { if (x.exerciseId === m.id) delete ui.drafts[xi]; });
+      persist();
+      render();
+      openSheet({ type: 'exercise', id: m.groupOf });
+      toast('Kaydedildi');
       return;
     }
 
