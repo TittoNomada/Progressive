@@ -99,6 +99,26 @@
     return p;
   }
 
+  // Bu günün (şablonun) geçmiş antrenmanlarında yapılmış ama şablonda olmayan hareketler (v31).
+  // Makineler ana harekete toplanır. Dönüş: [{ exerciseId (ana), lastDate, count }] en yeni önce.
+  function pastDayExtras(workouts, exercises, templateId, excludePrimaryIds, excludeWorkoutId) {
+    const skip = new Set(excludePrimaryIds || []);
+    const map = {};
+    (workouts || []).filter((w) => w.templateId === templateId && w.endedAt && w.id !== excludeWorkoutId).forEach((w) => {
+      const seen = new Set();
+      (w.exercises || []).forEach((x) => {
+        if (!(x.sets || []).length) return;
+        const p = machinePrimary(exercises || {}, x.exerciseId);
+        if (skip.has(p) || seen.has(p) || !(exercises || {})[p]) return;
+        seen.add(p);
+        const m = map[p] || (map[p] = { exerciseId: p, lastDate: w.startedAt, count: 0 });
+        m.count += 1;
+        if (new Date(w.startedAt) > new Date(m.lastDate)) m.lastDate = w.startedAt;
+      });
+    });
+    return Object.values(map).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+  }
+
   // Drop setleriyle birlikte (v27): "80×8 + drop 60×6 + drop 50×6". Drop'lar ayrı çalışma seti sayılmaz.
   function formatSetFull(type, set) {
     const drops = (set && set.drops) || [];
@@ -883,7 +903,7 @@
 
   return {
     E1RM_MAX_REPS, fmtNum, parseNum, formatSet, formatSetFull, dropDraft, bestEver, stepValue,
-    machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, e1rm, isWorkingSet, setScore,
+    machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, pastDayExtras, e1rm, isWorkingSet, setScore,
     compareScores, totalLoad, compareSets, bestSet, trend, lastPerformance, prefill, periodRange,
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,

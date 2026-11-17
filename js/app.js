@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 30;
+  const APP_VERSION = 31;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -791,7 +791,7 @@
     'set-log': '−/+ ile ayarla ya da kutuya yazarak gir, sonra Seti kaydet. −/+ adımını hareketin ⋯ menüsü → Ayarlar\'dan değiştirebilirsin.',
     target: '🎯 Bugünkü hedefin: geçen seferinden biraz fazlası. Değerler buna göre hazır gelir; yapamazsan değiştirip kaydet.',
     warmup: 'Isınma setini "Isınma" ile işaretle; ilerleme ve rekor hesabına girmez.',
-    'add-exercise': 'Burada eklediğin ya da çıkardığın hareketler sadece bu antrenmana aittir. Kalıcı değişiklik için ⚙︎ Ayarlar.',
+    'add-exercise': 'Hareket eklerken bu güne kalıcı eklemek isteyip istemediğin sorulur. Çıkardığın ya da taşıdığın hareketler sadece bu antrenmana aittir.',
     cardio: 'Makinedeki kaloriyi girersen haftalık kalori özetin doğru olur. Göremediysen "Kaloriyi tahmin et".',
     summary: 'Bir hareketin adına dokunursan o hareketin grafiğini ve rekorlarını görürsün.',
     history: 'Bir antrenmana dokun, detayını gör. Değiştirmek için içindeki ✎ Antrenmanı düzenle.',
@@ -1569,7 +1569,7 @@
     // Yeni harekette hangi güne (Push / Pull) ekleneceği seçilir
     const days = state.templates.filter((t) => t.kind === 'strength');
     const dayField = s.id ? '' : s.addToWorkout
-      ? '<p class="muted small sheet-hint">Sadece bu antrenmana eklenir. Bir güne kalıcı eklemek için Ayarlar\'ı kullan.</p>' :
+      ? '<p class="muted small sheet-hint">Oluşturunca bu güne kalıcı eklemek isteyip istemediğin sorulur.</p>' :
       '<div class="field">Hangi gün?<div class="chips">' + days.map((t) =>
         '<label class="chip-radio"><input type="radio" name="templateId" value="' + esc(t.id) + '"' +
         (s.templateId === t.id ? ' checked' : '') + '><span>' + esc(t.name) + '</span></label>').join('') +
@@ -1743,12 +1743,19 @@
   function sheetAddExercise() {
     const w = activeWorkout();
     const inWorkout = new Set(w.exercises.map((e) => L.machinePrimary(state.exercises, e.exerciseId)));
-    const list = Object.values(state.exercises).filter((e) => !e.archived && !e.groupOf && !inWorkout.has(e.id))
+    // v31: bu günde daha önce yaptıkların üstte (son tarih ve kaç kez)
+    const t = template(w.templateId);
+    const extras = t ? L.pastDayExtras(state.workouts, state.exercises, t.id, [...inWorkout], w.id) : [];
+    const extraIds = new Set(extras.map((x) => x.exerciseId));
+    const pastRows = extras.map((x) => '<button class="row-btn" data-action="pick-exercise" data-id="' + esc(x.exerciseId) + '"><b>' + esc(exercise(x.exerciseId).name) + '</b>' +
+      '<span class="muted small"> · ' + x.count + ' kez · son ' + esc(L.dateTr(x.lastDate, { noYear: true })) + '</span></button>').join('');
+    const list = Object.values(state.exercises).filter((e) => !e.archived && !e.groupOf && !inWorkout.has(e.id) && !extraIds.has(e.id))
       .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
       .map((e) => '<button class="row-btn" data-action="pick-exercise" data-id="' + esc(e.id) + '">' + esc(e.name) + '</button>').join('');
     return '<h3>Hareket ekle</h3>' +
-      '<p class="muted small sheet-hint">Sadece bu antrenmana eklenir. Bir güne kalıcı eklemek için Ayarlar\'ı kullan.</p>' +
-      (list || '<p class="muted">Tüm hareketler zaten bu antrenmanda.</p>') +
+      '<p class="muted small sheet-hint">Son yaptığın setlerle gelir. ' + (t && t.kind === 'strength' && !w.editingEndedAt ? 'Bu güne kalıcı eklemek isteyip istemediğin sorulur.' : 'Sadece bu antrenmana eklenir.') + '</p>' +
+      (pastRows ? '<p class="section-label">Daha önce ' + esc(t.name) + ' gününde yaptıkların</p>' + pastRows + (list ? '<p class="section-label">Diğer hareketler</p>' : '') : '') +
+      (list || (pastRows ? '' : '<p class="muted">Tüm hareketler zaten bu antrenmanda.</p>')) +
       '<button class="ghost-btn" data-action="new-exercise">+ Yeni hareket oluştur</button>' +
       '<div class="sheet-actions"><button class="ghost-btn" data-action="close-sheet">Kapat</button></div>';
   }
@@ -2215,15 +2222,37 @@
     },
   };
 
-  function addExerciseToWorkout(id) {
+  // Antrenman içinden hareket ekleme (v31): bu günde yoksa "bu güne kalıcı ekleyeyim mi?" diye sorar
+  // (düzenleme modunda sormaz). Set sayısı ve değerler bu hareketin son antrenmanından gelir.
+  async function addExerciseToWorkout(id, opts) {
     const w = activeWorkout();
-    w.exercises.push({ exerciseId: L.lastUsedMachine(state.workouts, state.exercises, id), targetSets: 3, sets: [] });
+    const primary = L.machinePrimary(state.exercises, id);
+    const mid = L.lastUsedMachine(state.workouts, state.exercises, primary, w.id);
+    const prev = L.lastPerformance(state.workouts, mid, w.id, w.startedAt);
+    const lastWork = prev ? prev.sets.filter((x) => !x.isWarmup).length : 0;
+    const targetSets = Math.min(Math.max(lastWork || 3, 1), 10);
+    const t = template(w.templateId);
+    const canKeep = t && t.kind === 'strength' && !w.editingEndedAt && !t.items.some((it) => L.machinePrimary(state.exercises, it.exerciseId) === primary);
+    closeSheet();
+    let keep = false;
+    if (canKeep) {
+      const done = L.pastDayExtras(state.workouts, state.exercises, t.id, [], w.id).find((x) => x.exerciseId === primary);
+      const res = await ask({
+        title: t.name + ' gününe kalıcı eklensin mi?',
+        message: (done ? 'Bunu daha önce ' + done.count + ' ' + t.name + ' antrenmanında yaptın (son: ' + L.dateTr(done.lastDate, { noYear: true }) + '). ' : '') +
+          'Kalıcı eklersen her ' + t.name + ' antrenmanında gelir; istersen Ayarlar\'dan çıkarırsın.',
+        ok: 'Kalıcı ekle', cancel: 'Sadece bugün',
+      });
+      keep = res === true;
+    }
+    w.exercises.push({ exerciseId: mid, targetSets, sets: [] });
+    if (keep) t.items.push({ exerciseId: primary, targetSets });
     ui.focus = w.exercises.length - 1;
     snapshotPlan(w);
     persist();
-    closeSheet();
     render();
     scrollToCard(ui.focus);
+    toast(keep ? t.name + ' gününe kalıcı eklendi' : (opts && opts.created ? 'Oluşturuldu, sadece bu antrenmana eklendi' : 'Sadece bu antrenmana eklendi'));
   }
 
   document.addEventListener('click', (ev) => {
@@ -2344,8 +2373,7 @@
       }
       closeSheet();
       if (toWorkout) {
-        addExerciseToWorkout(id);
-        toast('Sadece bu antrenmana eklendi');
+        addExerciseToWorkout(id, { created: true });
       } else {
         render();
         toast(addedTo ? addedTo.name + ' gününe eklendi' : 'Kaydedildi');

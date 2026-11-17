@@ -152,6 +152,7 @@
   // Sürüm notları (v21): yeni sürüm gelince açılışta bir kez gösterilir (settings.lastSeenVersion).
   // Kullanıcıya dönük, kısa; en yeni üstte. Yeni sürümde buraya bir satır ekle.
   const CHANGELOG = [
+    { v: 31, items: ['Antrenmanda hareket eklerken "bu güne kalıcı eklensin mi?" diye sorar.', 'Ekleme listesinin üstünde o günde daha önce yaptığın hareketler (kaç kez, son tarih) görünür; eklenen hareket son yaptığın set sayısı ve değerlerle gelir.'] },
     { v: 30, items: ['Makineler: bir harekete farklı makineler ekleyebilirsin (Ayarlar → hareket → "+ Makine ekle"). Her makinenin ağırlık adımı ve birimi (kg / lb) ayrı.', 'Antrenmanda kartın üstünden makineyi seç: geçen sefer, hedef ve rekor o makineye göre gelir. Varsayılan olarak geçen sefer kullandığın makine seçili.'] },
     { v: 29, items: ['"Neler değişti" paneli artık sen "Anladım"a basana kadar açık kalır.'] },
     { v: 28, items: ['Hedefin altındaki satırın adı "Rekorun" oldu.'] },
