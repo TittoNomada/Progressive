@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 32;
+  const APP_VERSION = 33;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -544,7 +544,7 @@
       const rows = ex.sets.map((s, si) =>
         '<div class="set-row done static">' +
         '<span class="set-no">' + (s.isWarmup ? 'Is' : workNo(ex.sets, si)) + '</span>' +
-        '<span class="set-val' + (s.isWarmup ? ' warm' : '') + '">' + esc(L.formatSet(e.type, s)) + '</span>' +
+        '<span class="set-val' + (s.isWarmup ? ' warm' : '') + '">' + esc(L.formatSet(e.type, s)) + (s.partials ? ' <span class="partial">+' + s.partials + ' yarım</span>' : '') + '</span>' +
         (s === best ? '<span class="best-tag">en iyi</span>' : '') + (records[i][si] ? PR_BADGE : '') + '</div>' +
         (s.drops || []).map((d) => '<div class="set-row drop static"><span class="drop-tag">drop</span><span class="set-val">' + esc(L.formatSet(e.type, d)) + '</span></div>').join('')).join('');
       return '<section class="card">' + exerciseTitle(e) + '<div class="sets">' +
@@ -800,14 +800,14 @@
     exercise: 'Grafikte bir güne dokun, o günün setini gör. ⚙︎ ile tekrar aralığını ve ağırlık adımını değiştir.',
     settings: 'Günlerini burada kalıcı olarak düzenlersin: hareket ekle, çıkar, sırala. Antrenman sırasında yaptığın değişiklikler sadece o güne aittir.',
     kcal: 'Ağırlık kalorisi yaptığın set sayısından tahmin edilir; kardiyo kalorisi girdiğin değerdir.',
-    machines: 'Bu hareketin birden çok makinesi var. Kullandığın makineyi seç: geçen sefer, hedef, rekor ve birim o makineye göre gelir.',
+    machines: 'Bu hareketin birden çok makinesi var. Kullandığın makineyi seç: geçen sefer, hedef, rekor ve birim o makineye göre gelir. Set girdikten sonra başka makineye geçersen ona ayrı kart açılır.',
     'machine-add': 'Salonda bu hareket için başka bir makine de kullanıyorsan (farklı ağırlık adımı ya da lb) "+ Makine ekle". Her makinenin hedefi ve rekoru ayrı tutulur.',
     // v27: daha fazla özellik tanıtımı (her biri ilgili yer ilk görüldüğünde, ekranda tek ipucu)
     'warmup-walk': 'Antrenman öncesi yürüyüşünü buradan gir. Kardiyo toplamına girer, Özet\'te ısınma olarak ayrıca görünür.',
     best: '🏆 Rekorun: bu hareketteki tüm zamanların en iyi setin ve ne zaman yaptığın. Hedef ise geçen seferine göre çıkar.',
     'edit-set': 'Kaydettiğin bir sete dokunarak düzeltebilir ya da silebilirsin.',
     record: '🏆 işareti kişisel rekor: o set bu hareketteki tüm zamanların en iyisi.',
-    drop: 'Setin hemen ardından ağırlığı düşürüp devam ettiysen "+ Drop set" ile ekle. Set sayısına ve rekora girmez, kaloriye eklenir.',
+    drop: 'Setin hemen ardından ağırlığı düşürüp devam ettiysen "+ Drop set", zorlanarak yaptığın yarım tekrarlar için "+ Yarım tekrar" (her dokunuş +1). Set sayısına ve rekora girmez.',
     backoff: 'Üst setten sonraki setler düşüş seti: hedef yok, amaç hacim. Set düzenini ⚙︎ Ayarlar → Set düzeni ve hedef\'ten değiştirebilirsin.',
     stopwatch: 'Başlat\'a bas, bitince "Seti kaydet": ölçülen süre otomatik yazılır. Hedef her sette geçen seferden biraz fazlası.',
     menu: 'Hareketin ⋯ menüsünden grafiğini açar, sırasını değiştirir, bu antrenmandan çıkarır ya da tekrar aralığını ve ağırlık adımını değiştirirsin.',
@@ -1296,7 +1296,7 @@
       ? '<div class="machine-chips">' + mIds.map((id) => {
         const on = id === ex.exerciseId;
         return '<button class="chip' + (on ? ' on' : '') + '" data-action="pick-machine" data-ex="' + i + '" data-id="' + esc(id) + '"' +
-          (!on && ex.sets.length ? ' disabled' : '') + '>' + esc(L.machineName(state.exercises, id)) +
+          '>' + esc(L.machineName(state.exercises, id)) +
           (unitOf(exercise(id)) === 'lb' ? ' · lb' : '') + '</button>';
       }).join('') + '</div>'
       : '';
@@ -1309,7 +1309,7 @@
       if (p && !s.isWarmup && !p.isWarmup) t = trendIcon(L.trend(e.type, p, s));
       return '<button class="set-row done" data-action="edit-set" data-ex="' + i + '" data-si="' + si + '">' +
         '<span class="set-no">' + (s.isWarmup ? 'Is' : workNo(ex.sets, si)) + '</span>' +
-        '<span class="set-val">' + esc(L.formatSet(e.type, s)) + '</span>' + t + (flags[si] ? PR_BADGE : '') +
+        '<span class="set-val">' + esc(L.formatSet(e.type, s)) + (s.partials ? ' <span class="partial">+' + s.partials + ' yarım</span>' : '') + '</span>' + t + (flags[si] ? PR_BADGE : '') +
         '<span class="check">✓</span></button>' +
         // Drop setleri (v27): ana setin altında, girintili; ayrı set sayılmaz
         (s.drops || []).map((d, di) => '<button class="set-row drop" data-action="edit-drop" data-ex="' + i + '" data-si="' + si + '" data-di="' + di + '">' +
@@ -1318,7 +1318,13 @@
     // "+ Drop set": son kaydedilen set çalışma setiyse (ağırlıklı / vücut ağırlığı hareketlerinde)
     const lastSet = ex.sets[ex.sets.length - 1];
     const canDrop = focused && lastSet && !lastSet.isWarmup && (e.type === 'weighted' || e.type === 'bodyweight');
-    const dropBtn = canDrop ? '<button class="text-btn drop-btn" data-action="add-drop" data-ex="' + i + '" data-si="' + (ex.sets.length - 1) + '">+ Drop set</button>' : '';
+    // v33: son sete hızlı ekler: drop set ve yarım tekrar (her dokunuş +1 yarım tekrar)
+    const dropBtn = canDrop
+      ? '<div class="after-set">' +
+        '<button class="mini-btn" data-action="add-drop" data-ex="' + i + '" data-si="' + (ex.sets.length - 1) + '">+ Drop set</button>' +
+        (e.type !== 'timed' ? '<button class="mini-btn" data-action="add-partial" data-ex="' + i + '" data-si="' + (ex.sets.length - 1) + '">+ Yarım tekrar' +
+          (lastSet.partials ? ' (' + lastSet.partials + ')' : '') + '</button>' : '') + '</div>'
+      : '';
 
     let active = '';
     if (focused && !done) {
@@ -1641,7 +1647,8 @@
       '<label class="field">' + weightLabel(e.type) + ' (' + unitOf(e) + ')<input name="weight" inputmode="decimal" value="' + esc(L.fmtNum(set.weight)) + '"></label>' +
       (e.type === 'timed'
         ? '<label class="field">Süre (sn)<input name="seconds" inputmode="numeric" value="' + esc(set.seconds || 0) + '"></label>'
-        : '<label class="field">Tekrar<input name="reps" inputmode="numeric" value="' + esc(set.reps) + '"></label>') +
+        : '<label class="field">Tekrar<input name="reps" inputmode="numeric" value="' + esc(set.reps) + '"></label>' +
+          '<label class="field">Yarım tekrar <span class="muted small">(zorlanarak, tam açılmadan)</span><input name="partials" inputmode="numeric" value="' + esc(set.partials || 0) + '"></label>') +
       '<label class="check-field"><input type="checkbox" name="isWarmup"' + (set.isWarmup ? ' checked' : '') + '> Isınma seti</label>' +
       '<div class="sheet-actions"><button type="button" class="ghost-btn danger" data-action="delete-set">Seti sil</button>' +
       '<button type="submit" class="primary">Kaydet</button></div></form>';
@@ -1810,7 +1817,7 @@
       (s.ex > 0 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="-1">↑ Yukarı taşı</button>' : '') +
       (s.ex < w.exercises.length - 1 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="1">↓ Aşağı taşı</button>' : '') +
       (ex.targetSets > workDone(ex) && ex.targetSets > 1 ? '<button class="row-btn" data-action="remove-planned" data-ex="' + s.ex + '">Planlanan seti azalt (−1)</button>' : '') +
-      '<button class="row-btn danger" data-action="remove-exercise" data-ex="' + s.ex + '">Bu antrenmandan çıkar</button>' +
+      '<button class="row-btn danger" data-action="remove-exercise" data-ex="' + s.ex + '">Hareketi çıkar</button>' +
       '<div class="sheet-actions"><button class="ghost-btn" data-action="close-sheet">Kapat</button></div>';
   }
 
@@ -2075,8 +2082,22 @@
       const w = activeWorkout();
       const i = Number(el.dataset.ex);
       const ex = w.exercises[i];
-      if (ex.sets.length && !(await ask({ title: 'Hareketi çıkar?', message: 'Bu hareketin girilen setleri de silinecek.',
+      // v33: hareket bu günün listesindeyse "günden de kalıcı çıkar" seçeneği (düzenleme modunda yok)
+      const t = template(w.templateId);
+      const primary = L.machinePrimary(state.exercises, ex.exerciseId);
+      const inDay = t && t.kind === 'strength' && !w.editingEndedAt ? t.items.findIndex((it) => L.machinePrimary(state.exercises, it.exerciseId) === primary) : -1;
+      const others = w.exercises.some((x, xi) => xi !== i && L.machinePrimary(state.exercises, x.exerciseId) === primary);
+      let fromDay = false;
+      if (inDay >= 0 && !others) {
+        const res = await ask({ title: exName(ex.exerciseId) + ' çıkarılsın mı?',
+          message: (ex.sets.length ? 'Bu antrenmanda girdiğin setleri de silinir. ' : '') +
+            'Kalıcı çıkarırsan bundan sonraki ' + t.name + ' antrenmanlarında gelmez; geçmiş kayıtların silinmez.',
+          ok: 'Sadece bugün', alt: t.name + ' gününden de çıkar', cancel: 'Vazgeç', danger: ex.sets.length > 0 });
+        if (!res) return;
+        fromDay = res === 'alt';
+      } else if (ex.sets.length && !(await ask({ title: 'Hareketi çıkar?', message: 'Bu hareketin girilen setleri de silinecek.',
         ok: 'Çıkar', danger: true }))) return;
+      if (fromDay) t.items.splice(inDay, 1);
       w.exercises.splice(i, 1);
       ui.drafts = {};
       ui.sw = null;
@@ -2085,6 +2106,7 @@
       persist();
       closeSheet();
       render();
+      toast(fromDay ? t.name + ' gününden kalıcı çıkarıldı' : 'Sadece bu antrenmandan çıkarıldı');
     },
     'add-exercise': () => openSheet({ type: 'add-exercise' }),
     'pick-exercise': (el) => addExerciseToWorkout(el.dataset.id),
@@ -2093,8 +2115,24 @@
       const w = activeWorkout();
       const i = Number(el.dataset.ex);
       const ex = w && w.exercises[i];
-      if (!ex || ex.exerciseId === el.dataset.id) return;
-      if (ex.sets.length) { toast('Set kaydettikten sonra makine değişmez'); return; }
+      if (!ex) return;
+      if (ex.exerciseId === el.dataset.id) { if (ui.focus !== i) { ui.focus = i; render(); } return; }
+      // v33: o makinenin kartı zaten varsa ona geç; bu kartta set varsa diğer makine için ayrı kart aç
+      // (setler makineye ait, karışmasın). Set yoksa bu kartın makinesi değişir.
+      const j = w.exercises.findIndex((x) => x.exerciseId === el.dataset.id);
+      if (j >= 0) { ui.focus = j; render(); scrollToCard(j); return; }
+      if (ex.sets.length) {
+        w.exercises.splice(i + 1, 0, { exerciseId: el.dataset.id, targetSets: Math.max(ex.targetSets - workDone(ex), 1), sets: [] });
+        ui.drafts = {};
+        ui.sw = null;
+        ui.focus = i + 1;
+        snapshotPlan(w);
+        persist();
+        render();
+        scrollToCard(i + 1);
+        toast(L.machineName(state.exercises, el.dataset.id) + ' için ayrı kart açıldı');
+        return;
+      }
       ex.exerciseId = el.dataset.id;
       delete ui.drafts[i];
       if (ui.sw && ui.sw.ex === i) ui.sw = null;
@@ -2125,6 +2163,13 @@
 
     'add-cardio': (el) => openSheet({ type: 'cardio', workoutId: el.dataset.w || null }),
     'add-warmup': () => openSheet({ type: 'cardio', warmup: true }),
+    'add-partial': (el) => {
+      const set = activeWorkout().exercises[Number(el.dataset.ex)].sets[Number(el.dataset.si)];
+      set.partials = (set.partials || 0) + 1;
+      persist();
+      render();
+      toast(set.partials + ' yarım tekrar eklendi · düzeltmek için sete dokun');
+    },
     'add-drop': (el) => openSheet({ type: 'drop', ex: Number(el.dataset.ex), si: Number(el.dataset.si) }),
     'edit-drop': (el) => openSheet({ type: 'drop', ex: Number(el.dataset.ex), si: Number(el.dataset.si), di: Number(el.dataset.di) }),
     'delete-drop': () => {
@@ -2420,6 +2465,7 @@
       if (weight !== null && weight >= 0) set.weight = weight;
       if (reps > 0) set.reps = reps;
       if (seconds > 0) set.seconds = seconds;
+      if (f.has('partials')) { const pr = parseInt(f.get('partials'), 10); if (pr > 0) set.partials = pr; else delete set.partials; }
       set.isWarmup = f.get('isWarmup') === 'on';
       if (!w.endedAt) delete ui.drafts[ui.sheet.ex];
       persist();

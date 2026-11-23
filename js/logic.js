@@ -122,7 +122,9 @@
   // Drop setleriyle birlikte (v27): "80×8 + drop 60×6 + drop 50×6". Drop'lar ayrı çalışma seti sayılmaz.
   function formatSetFull(type, set) {
     const drops = (set && set.drops) || [];
-    return formatSet(type, set) + drops.map((d) => ' + drop ' + formatSet(type, d)).join('');
+    // v33: yarım tekrar (zorlanarak, tam açılmadan): "80×8 +2 yarım". Tekrar sayısına, hedefe ve rekora girmez.
+    const pr = set && set.partials > 0 ? ' +' + set.partials + ' yarım' : '';
+    return formatSet(type, set) + pr + drops.map((d) => ' + drop ' + formatSet(type, d)).join('');
   }
 
   // Drop seti önerisi: ana setin (ya da son drop'un) ~%20 hafifi, ağırlık adımına aşağı yuvarlanır; tekrar aynı
@@ -609,7 +611,7 @@
     const a = sets(before), b = sets(after);
     const out = [];
     const fmt = (x) => (x.set.isWarmup ? 'ısınma ' : '') + formatSetFull(typeOf(x.exerciseId), x.set);
-    const dropsKey = (st) => JSON.stringify((st.drops || []).map((d) => [d.weight, d.reps]));
+    const dropsKey = (st) => JSON.stringify([(st.drops || []).map((d) => [d.weight, d.reps]), st.partials || 0]);
     for (const [id, x] of b) {
       const old = a.get(id);
       if (!old) out.push({ kind: 'add', text: nameOf(x.exerciseId) + ': set eklendi (' + fmt(x) + ')' });
