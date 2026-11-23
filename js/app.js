@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 31;
+  const APP_VERSION = 32;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -170,7 +170,7 @@
       const e = exercise(ex.exerciseId);
       const d = L.prefill(prev, ex.sets, ex.sets.length, e);
       // Hedef (üst set ya da son setler) ve düşüş setleri doğrudan önerilen değerle dolar (tutturursan tek dokunuş)
-      const plan = planFor(ex, e, prev, d.isWarmup);
+      const plan = planFor(ex, e, prev, d.isWarmup, w);
       if (plan.draft) Object.assign(d, plan.draft);
       ui.drafts[exIndex] = d;
     }
@@ -197,8 +197,9 @@
       example: ['<b>Set 1</b> 32,5×9 <span class="muted">geçen seferki gibi</span>', '<b>Set 2</b> 35×9 🎯', '<b>Set 3</b> 37,5×7 🎯'] },
   ];
 
-  function planFor(ex, e, prevSets, isWarmup) {
-    return L.setPlan({ mode: targetMode(), exercise: e, prevSets, currentSets: ex.sets, plannedSets: ex.targetSets, isWarmup });
+  function planFor(ex, e, prevSets, isWarmup, w) {
+    const positionBests = w ? L.positionBests(state.workouts, e.type, ex.exerciseId, w.startedAt, w.id) : [];
+    return L.setPlan({ mode: targetMode(), exercise: e, prevSets, currentSets: ex.sets, plannedSets: ex.targetSets, isWarmup, positionBests });
   }
 
   function confirmSet(exIndex) {
@@ -1323,8 +1324,18 @@
     if (focused && !done) {
       const d = draftFor(w, i);
       const n = workDone(ex) + 1;
-      const plan = planFor(ex, e, prev.sets, d.isWarmup);
+      const plan = planFor(ex, e, prev.sets, d.isWarmup, w);
       const tg = plan.target;
+      // v32: düşüş / hazırlık setinde "bu setteki rekorun" (o sıradaki setin en iyisi); dokununca taslağa uygulanır
+      const g = plan.goal && plan.draft ? plan.goal : null;
+      const onGoal = g && d.weight === plan.draft.weight && d.reps === plan.draft.reps;
+      const goalBtn = g
+        ? '<button class="target' + (onGoal ? ' on' : '') + '" data-action="apply-target" data-ex="' + i + '" data-tw="' + plan.draft.weight +
+          '" data-tr="' + (plan.draft.reps || '') + '" data-ts="">🎯 Bu setteki rekorun: <b>' + esc(L.formatSet(e.type, g.set)) + '</b>' +
+          '<span class="muted small"> · ' + (g.sessionsAgo === 1 ? 'geçen sefer' : g.sessionsAgo + ' antrenman önce') +
+          (plan.draft.weight !== g.set.weight ? ' · bugünkü son setten ağır olmasın diye ' + esc(L.fmtNum(plan.draft.weight)) + ' öneriliyor' : '') +
+          (onGoal ? '' : ' · uygula') + '</span></button>'
+        : '';
       const r = L.repRange(e);
       const timed = e.type === 'timed';
       const onTarget = tg && d.weight === tg.weight && (timed ? d.seconds === tg.seconds : d.reps === tg.reps);
@@ -1334,10 +1345,12 @@
           '<span class="muted small">' + (tg.kind === 'weight' ? ' · ağırlığı artır' : tg.kind === 'time' ? ' · +' + L.timeStepOf(e) + ' sn' : ' · +1 tekrar') +
           (onTarget ? '' : ' · uygula') + '</span></button>'
         : plan.role === 'backoff'
-          ? '<p class="muted small easy-set"><b class="plain">Düşüş seti</b> · ' +
+          ? goalBtn + '<p class="muted small easy-set"><b class="plain">Düşüş seti</b> · ' +
             (plan.lighter !== null && plan.lighter !== undefined
               ? 'tekrar ' + r.min + '–' + r.max + ' arasında kalsın; ' + r.min + ' tekrara ulaşamayacaksan ağırlığı azalt (üst setten %5–10 hafif ≈ ' + esc(L.fmtNum(plan.lighter)) + ' ' + unitOf(e) + ').'
               : 'aynı şekilde devam et, ' + (timed ? 'sürenin' : 'tekrarın') + ' düşmesi normal.') + '</p>'
+          : plan.role === 'prep' && g
+            ? goalBtn + '<p class="muted small easy-set">Hazırlık seti · hedef son ' + (targetMode() === 'last1' ? 'sette' : '2 sette') + '.</p>'
           : plan.role === 'prep' && plan.ref
             ? '<p class="muted small easy-set">Hazırlık seti · geçen seferki gibi (' + esc(L.formatSet(e.type, plan.ref)) + '). Hedef son ' +
               (targetMode() === 'last1' ? 'sette' : '2 sette') + '.</p>'
@@ -1852,7 +1865,7 @@
       } else {
         // Çalışma setine dön: hedef / öneri yeniden hesaplansın
         const prev = prevSetsFor(ex.exerciseId, w.id, w.startedAt).sets;
-        const plan = planFor(ex, e, prev, false);
+        const plan = planFor(ex, e, prev, false, w);
         d.isWarmup = false;
         const base = plan.draft || L.prefill(prev, ex.sets, ex.sets.length, e);
         d.weight = base.weight; d.reps = base.reps; d.seconds = base.seconds;

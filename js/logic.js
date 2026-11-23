@@ -277,11 +277,14 @@
       const last = working[working.length - 1];
       // Geçen seferin aynı sıradaki çalışma seti bugünkü son setten ağır değilse onu, yoksa bugünkü son seti öner
       // (düşüş seti hiçbir zaman bir önceki setten ağır önerilmez)
-      const p = prev.filter(isWorkingSet)[working.length];
+      // v32 (kullanıcı isteği): düşüş setinin hedefi bu sıradaki setin tüm zamanların en iyisi
+      // (geçen sefer bu set kötü geçtiyse öneri onunla düşmesin). Yoksa geçen seferin aynı sıradaki seti.
+      const goal = (o.positionBests || [])[working.length] || null;
+      const p = goal ? goal.set : prev.filter(isWorkingSet)[working.length];
       const base = p && p.weight <= last.weight ? p : last;
       const lighter = type !== 'weighted' ? null
         : Math.max(0, Math.floor((top.weight * 0.925) / (ex.weightStep || 2.5)) * (ex.weightStep || 2.5));
-      return { role: 'backoff', target: null, ref: top, draft: draftOf(base), lighter };
+      return { role: 'backoff', target: null, ref: top, draft: draftOf(base), lighter, goal };
     }
     const n = o.mode === 'last1' ? 1 : 2;
     const i = cur.filter(isWorkingSet).length;          // ısınmalar sayılmaz
@@ -290,7 +293,24 @@
       const target = nextTarget(ex, ref);
       return { role: 'target', target, ref, draft: target ? draftOf(target) : null };
     }
-    return { role: 'prep', target: null, ref: ref && !ref.isWarmup ? ref : null, draft: null };
+    const goal = (o.positionBests || [])[i] || null;
+    return { role: 'prep', target: null, ref: ref && !ref.isWarmup ? ref : null, draft: goal ? draftOf(goal.set) : null, goal };
+  }
+
+  // Her çalışma seti sırası için (0 = 1. çalışma seti) tüm zamanların en iyisi (v32).
+  // Dönüş: dizi; her öğe { set, startedAt, sessionsAgo } ya da undefined. Eşitlikte ilk yapıldığı antrenman.
+  function positionBests(workouts, type, exerciseId, before, excludeId) {
+    const t = before ? new Date(before) : null;
+    const sessions = (workouts || [])
+      .filter((w) => w.id !== excludeId && w.endedAt && (!t || new Date(w.startedAt) < t))
+      .map((w) => ({ w, sets: (w.exercises || []).filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets || []).filter(isWorkingSet) }))
+      .filter((x) => x.sets.length)
+      .sort((a, b) => byStartDesc(a.w, b.w));
+    const out = [];
+    sessions.forEach((x, si) => x.sets.forEach((st, i) => {
+      if (!out[i] || compareSets(type, st, out[i].set) >= 0) out[i] = { set: st, startedAt: x.w.startedAt, sessionsAgo: si + 1 };
+    }));
+    return out;
   }
 
   // ---------- Kişisel rekor ----------
@@ -903,7 +923,7 @@
 
   return {
     E1RM_MAX_REPS, fmtNum, parseNum, formatSet, formatSetFull, dropDraft, bestEver, stepValue,
-    machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, pastDayExtras, e1rm, isWorkingSet, setScore,
+    positionBests, machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, pastDayExtras, e1rm, isWorkingSet, setScore,
     compareScores, totalLoad, compareSets, bestSet, trend, lastPerformance, prefill, periodRange,
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,
