@@ -152,6 +152,7 @@
   // Sürüm notları (v21): yeni sürüm gelince açılışta bir kez gösterilir (settings.lastSeenVersion).
   // Kullanıcıya dönük, kısa; en yeni üstte. Yeni sürümde buraya bir satır ekle.
   const CHANGELOG = [
+    { v: 34, items: ['Antrenmanda hareketi yukarı/aşağı taşıyınca "günde de bu sırayla kalsın mı?" diye sorar.', 'Hareket menüsünde not: planlanan set sayısı ve günler kalıcı olarak Ayarlar\'dan değişir.'] },
     { v: 33, items: ['Antrenmanda hareketi çıkarırken "gününden de çıkar" seçeneği: bir sonraki antrenmanlarda gelmez.', 'Set girdikten sonra da başka makineye geçebilirsin: o makine için ayrı kart açılır, geçen seferki değerleri görünür.', 'Setin altında "+ Yarım tekrar": zorlanarak yaptığın yarım tekrarları ekle (her dokunuş +1). Drop set de aynı yerde.'] },
     { v: 32, items: ['Düşüş setlerinde öneri artık o sıradaki setin en iyisinden gelir ("🎯 Bu setteki rekorun"). Geçen sefer o set kötü geçtiyse öneri onunla düşmez.'] },
     { v: 31, items: ['Antrenmanda hareket eklerken "bu güne kalıcı eklensin mi?" diye sorar.', 'Ekleme listesinin üstünde o günde daha önce yaptığın hareketler (kaç kez, son tarih) görünür; eklenen hareket son yaptığın set sayısı ve değerlerle gelir.'] },

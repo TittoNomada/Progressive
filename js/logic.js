@@ -119,6 +119,17 @@
     return Object.values(map).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
   }
 
+  // Günün hareket sırasını antrenmandaki sıraya göre güncelle (v34). Antrenmanda olmayan hareketler yerinde kalır;
+  // antrenmanda olanlar kendi aralarında antrenmandaki sırayı alır. Makineler ana harekete göre eşlenir.
+  function reorderDayItems(items, workoutExerciseIds, exercises) {
+    const order = [];
+    (workoutExerciseIds || []).forEach((id) => { const p = machinePrimary(exercises || {}, id); if (!order.includes(p)) order.push(p); });
+    const prim = (it) => machinePrimary(exercises || {}, it.exerciseId);
+    const present = (items || []).filter((it) => order.includes(prim(it))).sort((a, b) => order.indexOf(prim(a)) - order.indexOf(prim(b)));
+    let k = 0;
+    return (items || []).map((it) => (order.includes(prim(it)) ? present[k++] : it));
+  }
+
   // Drop setleriyle birlikte (v27): "80×8 + drop 60×6 + drop 50×6". Drop'lar ayrı çalışma seti sayılmaz.
   function formatSetFull(type, set) {
     const drops = (set && set.drops) || [];
@@ -925,7 +936,7 @@
 
   return {
     E1RM_MAX_REPS, fmtNum, parseNum, formatSet, formatSetFull, dropDraft, bestEver, stepValue,
-    positionBests, machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, pastDayExtras, e1rm, isWorkingSet, setScore,
+    positionBests, reorderDayItems, machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, pastDayExtras, e1rm, isWorkingSet, setScore,
     compareScores, totalLoad, compareSets, bestSet, trend, lastPerformance, prefill, periodRange,
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,

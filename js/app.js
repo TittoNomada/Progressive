@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 33;
+  const APP_VERSION = 34;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -1818,6 +1818,9 @@
       (s.ex < w.exercises.length - 1 ? '<button class="row-btn" data-action="move" data-ex="' + s.ex + '" data-dir="1">↓ Aşağı taşı</button>' : '') +
       (ex.targetSets > workDone(ex) && ex.targetSets > 1 ? '<button class="row-btn" data-action="remove-planned" data-ex="' + s.ex + '">Planlanan seti azalt (−1)</button>' : '') +
       '<button class="row-btn danger" data-action="remove-exercise" data-ex="' + s.ex + '">Hareketi çıkar</button>' +
+      // v34: kalıcı değişikliklerin nerede yapıldığı
+      '<p class="muted small sheet-hint">Taşıma, ekleme ve çıkarmada günü kalıcı değiştirmek isteyip istemediğin sorulur. ' +
+      'Planlanan set sayısını ve günleri kalıcı değiştirmek için: Ayarlar.</p>' +
       '<div class="sheet-actions"><button class="ghost-btn" data-action="close-sheet">Kapat</button></div>';
   }
 
@@ -2056,7 +2059,7 @@
       render();
       toast(e.name + ', ' + t.name + ' gününden çıkarıldı');
     },
-    'move': (el) => {
+    'move': async (el) => {
       const w = activeWorkout();
       const i = Number(el.dataset.ex);
       const j = i + Number(el.dataset.dir);
@@ -2068,6 +2071,17 @@
       persist();
       closeSheet();
       render();
+      // v34: iki hareket de günün listesindeyse sıra güne de kaydedilebilir (düzenleme modunda sorulmaz)
+      const t = template(w.templateId);
+      if (!t || t.kind !== 'strength' || w.editingEndedAt) return;
+      const inDay = (x) => t.items.some((it) => L.machinePrimary(state.exercises, it.exerciseId) === L.machinePrimary(state.exercises, x.exerciseId));
+      if (!inDay(w.exercises[i]) || !inDay(w.exercises[j])) { toast('Sadece bu antrenmanda taşındı'); return; }
+      const res = await ask({ title: t.name + ' gününde de bu sırayla kalsın mı?',
+        message: 'Kalıcı yaparsan bundan sonraki ' + t.name + ' antrenmanları bu sırayla başlar.', ok: 'Kalıcı yap', cancel: 'Sadece bugün' });
+      if (res !== true) { toast('Sadece bu antrenmanda taşındı'); return; }
+      t.items = L.reorderDayItems(t.items, w.exercises.map((x) => x.exerciseId), state.exercises);
+      persist();
+      toast(t.name + ' gününün sırası güncellendi');
     },
     'remove-planned': (el) => {
       const w = activeWorkout();
