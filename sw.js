@@ -1,6 +1,6 @@
 // Çevrimdışı çalışma için uygulama dosyalarını önbelleğe alır.
 // Dosyalarda değişiklik yaptığında VERSION'ı artır (app.js APP_VERSION ve index.html ?v= ile aynı).
-const VERSION = 'progressive-v34';
+const VERSION = 'progressive-v35';
 const FILES = [
   './',
   './index.html',

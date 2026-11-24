@@ -744,6 +744,38 @@
     return !group || group === 'all' || w.templateId === group;
   }
 
+  // Takvim (v35): dönemin günleri ve her günün antrenmanları. Ay görünümünde ızgara Pazartesi'den başlar,
+  // dönem dışındaki günler inPeriod: false. trainingDays / totalDays: "22/30"; elapsedDays: bugüne kadar geçen gün.
+  function periodCalendar(state, kind, ref, group, now) {
+    const range = periodRange(kind, ref, 0);
+    const today = dayKey(now || new Date());
+    const t0 = new Date(now || new Date()); t0.setHours(0, 0, 0, 0);
+    const done = (state.workouts || []).filter((w) => isFinished(w) && inGroup(w, group));
+    const byDay = {};
+    done.forEach((w) => { (byDay[dayKey(w.startedAt)] = byDay[dayKey(w.startedAt)] || []).push(w); });
+    const dow = (d) => (d.getDay() + 6) % 7;
+    const first = new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate() - dow(range.start));
+    const lastDay = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate() - 1);
+    const last = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate() + (6 - dow(lastDay)));
+    const cells = [];
+    for (let d = new Date(first); d <= last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      const key = dayKey(d);
+      const list = (byDay[key] || []).slice().sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+      cells.push({
+        date: new Date(d), key, inPeriod: d >= range.start && d < range.end, isToday: key === today, future: d > t0,
+        workouts: list.map((w) => ({ id: w.id, name: w.name, templateId: w.templateId,
+          strength: (w.exercises || []).some((e) => (e.sets || []).some(isWorkingSet)), cardio: (w.cardio || []).length > 0 })),
+      });
+    }
+    const inP = cells.filter((c) => c.inPeriod);
+    return {
+      cells,
+      totalDays: inP.length,
+      trainingDays: inP.filter((c) => c.workouts.length).length,
+      elapsedDays: inP.filter((c) => !c.future).length,
+    };
+  }
+
   // group: 'all' (veya boş) ya da şablon id'si (ör. 'push') → sadece o türün antrenmanları
   function summarize(state, kind, ref, group) {
     const range = periodRange(kind, ref, 0);
@@ -936,7 +968,7 @@
 
   return {
     E1RM_MAX_REPS, fmtNum, parseNum, formatSet, formatSetFull, dropDraft, bestEver, stepValue,
-    positionBests, reorderDayItems, machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, pastDayExtras, e1rm, isWorkingSet, setScore,
+    positionBests, reorderDayItems, periodCalendar, machinePrimary, machineIds, hasMachines, machineName, exerciseLabel, unitOf, lastUsedMachine, pastDayExtras, e1rm, isWorkingSet, setScore,
     compareScores, totalLoad, compareSets, bestSet, trend, lastPerformance, prefill, periodRange,
     hasStrengthSets, cardioMinutes, summarize, daysSince, bodyWeightStatus, weeklyBodyWeight, MONTHS_TR, dateTr,
     backupFileName, relativeDay, dayKey, workingSetCount, workoutStats, history, periodLabel,

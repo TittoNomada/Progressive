@@ -620,3 +620,27 @@ details.ins-why[open] summary { margin-bottom: 4px; }
 .after-set { display: flex; gap: 8px; margin: 6px 0 0 22px; flex-wrap: wrap; }
 .mini-btn { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); }
 .set-val .partial { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* ---------- v35: takvim ---------- */
+.calendar { margin-top: 16px; }
+.cal-head, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-head span { text-align: center; font-size: 11px; color: var(--muted); padding-bottom: 4px; }
+.cal-day {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 52px; padding: 4px 1px;
+  border-radius: 10px; background: var(--surface-2); border: 1px solid transparent; font: inherit; color: var(--text); min-width: 0;
+}
+.calendar.week .cal-day { min-height: 64px; }
+.cal-day.out { background: transparent; opacity: .35; }
+.cal-day.future .cal-num { color: var(--muted); }
+.cal-day.today { border-color: var(--text); }
+.cal-day.sel { border-color: var(--accent); }
+.cal-num { font-size: 12px; font-weight: 600; }
+.cal-mark {
+  font-style: normal; font-size: 9.5px; font-weight: 700; line-height: 1.5; padding: 0 3px; border-radius: 4px;
+  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: clip;
+}
+.cal-mark.s { background: var(--accent); color: var(--bg); }
+.cal-mark.c { border: 1px solid #6fb8ff; color: #6fb8ff; }
+.cal-more { font-style: normal; font-size: 9px; color: var(--muted); }
+.cal-sel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.cal-hint { margin-top: 8px; }

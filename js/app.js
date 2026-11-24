@@ -7,7 +7,7 @@
   'use strict';
 
   // Her güncellemede artır (index.html'deki ?v= ve sw.js'deki VERSION ile aynı tut).
-  const APP_VERSION = 34;
+  const APP_VERSION = 35;
 
   const L = window.Logic;
   const Store = window.Store;
@@ -1089,6 +1089,7 @@
       '<span class="period-label">' + esc(label) + '</span>' +
       '<button class="icon-btn" data-action="ov-shift" data-dir="1" aria-label="Sonraki"' + (ui.ovOffset >= 0 ? ' disabled' : '') + '>›</button></div>';
 
+    const cal = L.periodCalendar(state, kind, range.start, ui.ovGroup, now);
     const weeklyGoal = state.settings.weeklyCardioGoal || 150;
     const daysInPeriod = Math.round((range.end - range.start) / 86400000);
     const goal = kind === 'week' ? weeklyGoal : Math.round(weeklyGoal * daysInPeriod / 7);
@@ -1097,7 +1098,9 @@
     const tile = (big, small, sub) => '<div class="tile"><b>' + big + '</b><span>' + small + '</span>' + (sub ? '<em>' + sub + '</em>' : '') + '</div>';
     const tiles = '<div class="tiles">' +
       tile(sum.workoutCount, 'antrenman', sum.strengthCount + ' ağırlık · ' + sum.cardioOnlyCount + ' kardiyo') +
-      tile(sum.trainingDays, 'antrenman günü', kind === 'week' ? '7 günde' : daysInPeriod + ' günde') +
+      // v35: "5/7", "22/30" — devam eden dönemde bugüne kadar geçen gün de yazılır
+      tile(cal.trainingDays + '<small>/' + cal.totalDays + '</small>', 'spor günü',
+        cal.elapsedDays < cal.totalDays ? 'bugüne kadar ' + cal.elapsedDays + ' gün geçti' : '%' + Math.round(cal.trainingDays / cal.totalDays * 100) + ' gün') +
       tile(sum.totalSets, 'çalışma seti', 'ısınma hariç') +
       // Isınma yürüyüşleri (v27) toplama dahil, ayrımı alt satırda
       tile(sum.cardioMinutes, 'dk kardiyo', sum.cardio.warmupMinutes
@@ -1108,15 +1111,8 @@
       '<div class="bar" aria-label="Kardiyo hedefi"><i style="width:' + pct + '%"></i></div>' +
       '<p class="muted small">' + sum.cardioMinutes + ' / ' + goal + ' dk kardiyo</p>';
 
-    let strip = '';
-    if (sum.days) {
-      const names = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-      const today = L.dayKey(now);
-      strip = '<div class="day-strip">' + sum.days.map((d, i) =>
-        '<div class="day' + (L.dayKey(d.date) === today ? ' today' : '') + '"><span>' + names[i] + '</span>' +
-        '<i class="dot' + (d.strength ? ' s' : '') + (d.cardio ? ' c' : '') + '"></i></div>').join('') + '</div>' +
-        '<p class="muted small legend"><i class="dot s"></i> ağırlık <i class="dot c"></i> kardiyo</p>';
-    }
+    // Takvim (v35): hangi gün hangi antrenman. Güne dokununca o günün antrenmanları altta, dokununca açılır.
+    const strip = calendarHtml(cal, kind);
 
     let progress = '';
     if (sum.exerciseProgress.length) {
@@ -1156,6 +1152,32 @@
     return '<header class="top"><div><h1>Özet</h1></div><div class="segmented">' + seg('week', 'Hafta') + seg('month', 'Ay') + '</div></header>' +
       groupChips(ui.ovGroup, 'ov-group') +
       nav + '<section class="card">' + tiles + strip + '</section>' + empty + progress;
+  }
+
+  function calLabel(x) {
+    if (!x.strength && x.cardio) return 'Kard';
+    const first = String(x.name || '').split(/\s+/)[0];
+    return first.length > 5 ? first.slice(0, 4) + '.' : first;
+  }
+
+  function calendarHtml(cal, kind) {
+    const names = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+    const head = '<div class="cal-head">' + names.map((n) => '<span>' + n + '</span>').join('') + '</div>';
+    const cells = cal.cells.map((c) => {
+      const cls = 'cal-day' + (c.inPeriod ? '' : ' out') + (c.isToday ? ' today' : '') + (c.future ? ' future' : '') +
+        (c.workouts.length ? ' has' : '') + (ui.calSel === c.key ? ' sel' : '');
+      const marks = c.workouts.slice(0, 2).map((x) => '<i class="cal-mark' + (x.strength ? ' s' : ' c') + '">' + esc(calLabel(x)) + '</i>').join('') +
+        (c.workouts.length > 2 ? '<i class="cal-more">+' + (c.workouts.length - 2) + '</i>' : '');
+      const tag = c.workouts.length ? 'button' : 'div';
+      return '<' + tag + ' class="' + cls + '"' + (c.workouts.length ? ' data-action="cal-day" data-key="' + c.key + '"' : '') + '>' +
+        '<span class="cal-num">' + c.date.getDate() + '</span>' + marks + '</' + tag + '>';
+    }).join('');
+    const sel = cal.cells.find((c) => c.key === ui.calSel && c.workouts.length);
+    const detail = sel
+      ? '<div class="cal-sel"><span class="muted small">' + esc(L.dateTr(sel.date.toISOString(), { noYear: true })) + '</span>' +
+        sel.workouts.map((x) => '<button class="chip" data-action="open-workout" data-id="' + esc(x.id) + '">' + esc(x.name) + ' ›</button>').join('') + '</div>'
+      : '<p class="muted small cal-hint">Antrenman yaptığın güne dokun, o günün antrenmanını aç.</p>';
+    return '<div class="calendar' + (kind === 'week' ? ' week' : '') + '">' + head + '<div class="cal-grid">' + cells + '</div></div>' + detail;
   }
 
   function renderHome() {
@@ -2008,6 +2030,7 @@
     },
     'hist-group': (el) => { ui.histGroup = el.dataset.g; render(); },
     'ov-group': (el) => { ui.ovGroup = el.dataset.g; render(); },
+    'cal-day': (el) => { ui.calSel = ui.calSel === el.dataset.key ? null : el.dataset.key; render(); },
     'ov-kind': (el) => {
       ui.ovKind = el.dataset.k;
       ui.ovOffset = 0;

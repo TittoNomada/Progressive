@@ -152,6 +152,7 @@
   // Sürüm notları (v21): yeni sürüm gelince açılışta bir kez gösterilir (settings.lastSeenVersion).
   // Kullanıcıya dönük, kısa; en yeni üstte. Yeni sürümde buraya bir satır ekle.
   const CHANGELOG = [
+    { v: 35, items: ['Özet\'te "spor günü": haftada 5/7, ayda 22/30 gibi.', 'Özet\'te takvim: hangi gün hangi antrenmanı yaptığın görünür; güne dokunup o antrenmanı açabilirsin.'] },
     { v: 34, items: ['Antrenmanda hareketi yukarı/aşağı taşıyınca "günde de bu sırayla kalsın mı?" diye sorar.', 'Hareket menüsünde not: planlanan set sayısı ve günler kalıcı olarak Ayarlar\'dan değişir.'] },
     { v: 33, items: ['Antrenmanda hareketi çıkarırken "gününden de çıkar" seçeneği: bir sonraki antrenmanlarda gelmez.', 'Set girdikten sonra da başka makineye geçebilirsin: o makine için ayrı kart açılır, geçen seferki değerleri görünür.', 'Setin altında "+ Yarım tekrar": zorlanarak yaptığın yarım tekrarları ekle (her dokunuş +1). Drop set de aynı yerde.'] },
     { v: 32, items: ['Düşüş setlerinde öneri artık o sıradaki setin en iyisinden gelir ("🎯 Bu setteki rekorun"). Geçen sefer o set kötü geçtiyse öneri onunla düşmez.'] },
